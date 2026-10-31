@@ -21,7 +21,7 @@ M2–M4 (producer, media, dashboard) remain unimplemented. This branch is a draf
 - Official YouTube metadata adapter, disabled by default: title/creator/date only, fixed Google
   endpoint, validated source ID, no redirects/media/transcripts, bounded uncompressed responses.
   One-hour cache and atomic daily request reservations. Manual links still work without a key.
-- Migrations 0001–0005. Existing source data and pending 0002 outbox messages survive upgrade;
+- Migrations 0001–0006. Existing source data and pending 0002 outbox messages survive upgrade;
   new keyboard/metadata fields remain nullable. Schema/model parity tested on both databases.
 - Optional OpenAI Responses adapter, disabled by default; explicit model/key/budget/cap gates,
   strict structured output, input/output/time/response bounds, refusal/incomplete handling,
@@ -30,29 +30,39 @@ M2–M4 (producer, media, dashboard) remain unimplemented. This branch is a draf
   conservative uncertain states and bounded explicit safe retries. Admin status omits content.
   These controls bound requests/tokens, not currency invoices.
 
+- Advisory local lexical similarity for different IDs: normalized transcript/research profiles,
+  bounded scans/cursors and visible coverage limits; warnings in idea details/reports. No model
+  cost or automatic merge/rejection/approval. Explicit bounded legacy-profile backfill.
+- Paginated API status filters and Telegram saved/approved lists. Derived profiles are maintained
+  with transcript/research writes; pending research revisions are not treated as fresh evidence.
+
 ## Validation (2026-10-31)
-120 tests passed, none skipped, using the locked Python 3.12 environment and a temporary
+144 tests passed, none skipped, using the locked Python 3.12 environment and a temporary
 loopback-only PostgreSQL 16.2 test instance. That instance was stopped after testing. SQLite
 also passed. Ruff passed. The remaining warning is Starlette's httpx TestClient deprecation.
 
 Coverage includes manual Telegram flow, actor identity, old/forged callback rejection, replay
 and crash windows, delivery failures/cooldown, recipient removal, message chunking/keyboards,
 metadata parsing/redirect/size/timeout protection, caching, preserved manual overrides, and
-concurrent quota reservations. Migrations run from 0001 with existing source data, through
+concurrent quota reservations. Similarity tests cover normalized copies/edits, unrelated and
+short text, bounded profiles/coverage, immutable report warnings, profile refresh, explicit
+legacy backfill and paginated saved/approved lists on both databases. Migrations run from 0001 with existing source data, through
 0002 with a pending outbox row, to head twice, then check model parity and API health.
 
-GitHub-hosted runs still fail before visible job steps; logs are unavailable via the connector.
-Root cause remains unconfirmed. Local PostgreSQL success is not a green GitHub CI result.
-PostgreSQL 17 on the CI service, live Telegram, live YouTube and real AI remain unverified.
+GitHub CI became green after the repository was made public and run 41235573994 was rerun:
+120 tests passed with PostgreSQL 17.11, Ruff and both migration upgrades. That baseline was
+commit b8e1597; check the PR for the current-head result. The original pre-run failure's exact
+account-level cause was not established. Live Telegram, YouTube and real AI remain unverified.
 AI transport, spend-approval configuration and all generation responses were mocked; no live
 model quality, latency, availability or invoice estimate is claimed.
 
 ## Remaining work
 Do not mark M1 complete. Pending: approved model/budget selection and real isolated
-bot/metadata/AI acceptance tests; Instagram metadata permissions; near-duplicates;
+bot/metadata/AI acceptance tests; Instagram metadata permissions; semantic matching beyond
+lexical warnings;
 automatic discovery, quota-aware feeds and incremental caching. AI-generated facts still need
 founder verification. Current report placeholders for incomplete research are not real findings.
 
-Before production: CI diagnosis, delivery monitoring/alerts, operator reconciliation tools,
+Before production: current-head CI verification, delivery monitoring/alerts, operator reconciliation tools,
 retention/backup restore, rate limits and authentication hardening, production resource inventory
 and explicit deployment approval. No live integration credentials are needed for the mock suite.

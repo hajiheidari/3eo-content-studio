@@ -15,7 +15,7 @@ def idea_text(item):
              if origin.get("kind") in {"ai_draft", "provider_draft"} else "پژوهش ثبت‌شده دستی یا قبلی")
     if not research:
         return (f"ایده {item['id']} — {item['status']}\n{item['url']}{source}\n"
-                "پژوهش هنوز ثبت نشده است.")
+                "پژوهش هنوز ثبت نشده است.\n" + similarity_text(item.get("similarity"), item["id"]))
     return "\n".join([
         f"ایده {item['id']} — {item['status']} — امتیاز {item.get('score')}",
         research["title_fa"], item["url"] + source,
@@ -29,6 +29,7 @@ def idea_text(item):
         f"ارتباط با 3EO: {research.get('brand_connection_fa', 'ثبت نشده')}",
         "ادعاهای نیازمند بررسی: " + "؛ ".join(research["claims_to_verify"]),
         "محدودیت‌ها: " + "؛ ".join(research["limitations"]),
+        similarity_text(item.get("similarity"), item["id"]),
         f"/approve {item['id']}\n/reject {item['id']}\n/save {item['id']}\n/research {item['id']}",
     ])
 
@@ -36,6 +37,7 @@ def idea_text(item):
 HELP = (
     "لینک یوتیوب یا اینستاگرام را بفرستید.\n"
     "/ideas — فهرست ایده‌ها\n/idea ID — مشاهده پژوهش\n"
+    "/saved — ذخیره‌شده‌ها\n/approved — تأییدشده‌ها\n/similar ID — بررسی شباهت متن\n"
     "/transcript ID سپس خط جدید، منشأ مجاز متن، خط جدید و متن ویدئو\n"
     "/review ID سپس خط جدید و JSON پژوهش بازبینی‌شده\n"
     "/analyze ID — پژوهش با ارائه‌دهنده تنظیم‌شده\n"
@@ -99,6 +101,36 @@ class TelegramGateway:
                     "متن مجاز را با /transcript ID و راهنمای /help ثبت کنید.")
         command_line, _, content = text.partition("\n")
         command, _, item_id = command_line.partition(" ")
+        if command == "/similar":
+            arguments = command_line.split()
+            if (len(arguments) not in {2, 3} or content or any(
+                    not value.isascii() or not value.isdigit() or len(value) > 10
+                    or not 1 <= int(value) <= 2**31 - 1
+                    for value in arguments[1:])):
+                return "از /similar ID و در صورت نیاز شناسه ادامه استفاده کنید."
+            params = {"before_id": int(arguments[2])} if len(arguments) == 3 else {}
+            response = self.studio.get(f"/items/{int(arguments[1])}/similar", headers=headers, params=params)
+            if response.status_code == 404:
+                return "ایده پیدا نشد."
+            response.raise_for_status()
+            return similarity_text(response.json(), int(arguments[1]))
+        if command in {"/ideas", "/saved", "/approved"}:
+            if content or (item_id and (not item_id.isascii() or not item_id.isdigit()
+                                       or len(item_id) > 10 or int(item_id) <= 0)):
+                return "برای ادامه، شناسه عددی نمایش‌داده‌شده را پس از فرمان وارد کنید."
+            params = {"limit": 21}
+            if item_id:
+                params["before_id"] = int(item_id)
+            status = {"/saved": "SAVED", "/approved": "IDEA_APPROVED"}.get(command)
+            if status:
+                params["status"] = status
+            response = self.studio.get("/items", headers=headers, params=params)
+            response.raise_for_status()
+            items = response.json()
+            lines = [f"{i['id']}: {i['status']} {i['url']}" for i in items[:20]]
+            if len(items) > 20:
+                lines.append(f"ادامه: {command} {items[19]['id']}")
+            return "\n".join(lines) or "ایده‌ای در این بخش ثبت نشده است."
         if command in {"/approve", "/reject", "/save", "/research", "/transcript",
                        "/review", "/analyze", "/metadata", "/idea"}:
             if not item_id.isascii() or not item_id.isdigit() or len(item_id) > 10:
@@ -147,11 +179,6 @@ class TelegramGateway:
             if response.status_code in {502, 503}:
                 return "پژوهش آماده نشد؛ ارائه‌دهنده در دسترس نیست یا خروجی معتبر نداد."
             return "ثبت نشد؛ شناسه، قالب ورودی و وضعیت فعلی ایده را بررسی کنید."
-        if text == "/ideas":
-            response = self.studio.get("/items", headers=headers)
-            response.raise_for_status()
-            return ("\n".join(f"{i['id']}: {i['status']} {i['url']}"
-                              for i in response.json()) or "ایده‌ای ثبت نشده است.")
         return HELP
 
 
@@ -179,3 +206,24 @@ def idea_keyboard(item):
     buttons = [{"text": label, "callback_data": f"{action}:{item['id']}:{version}"}
                for label, action in actions]
     return {"inline_keyboard": [buttons[i:i + 2] for i in range(0, len(buttons), 2)]}
+
+
+def similarity_text(data, item_id):
+    if not data:
+        return ""  # Reports prepared before lexical matching remain readable.
+    lines = ["شباهت متن؛ فقط هشدار بازبینی و بدون تغییر وضعیت:"]
+    if not data.get("sufficient_text"):
+        lines.append("برای بررسی، متن یا پژوهش طولانی‌تر و کافی لازم است.")
+    elif data["matches"]:
+        for match in data["matches"]:
+            basis = "متن منبع" if match["basis"] == "transcript" else "پژوهش فارسی"
+            reason = "نوشتار یکسان" if match["match"] == "same_normalized_text" else "هم‌پوشانی زیاد"
+            lines.append(f"/idea {match['id']} — {basis}، {reason} — {match['status']}\n{match['url']}")
+    else:
+        lines.append("در بخش بررسی‌شده از سوابق، هم‌پوشانی زیادی پیدا نشد؛ این نتیجه قطعی نیست.")
+    lines.append(f"تعداد سوابق بررسی‌شده: {data['scanned']}")
+    if data.get("more_to_scan"):
+        lines.append(f"ادامه: /similar {item_id} {data['next_before_id']}")
+    if data.get("unindexed_count"):
+        lines.append(f"{data['unindexed_count']} سابقه هنوز آماده بررسی نیست؛ نمایه‌سازی لازم است.")
+    return "\n".join(lines)

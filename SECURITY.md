@@ -38,3 +38,10 @@ responses omit both transcript and draft. No secret, authorization header or raw
 is logged or returned. store:false is configured; provider data-retention policies must still be
 reviewed before any real transcript is transmitted. Ordinary tests clear live provider settings
 and keys and use mocked transport. No external AI request occurred in development.
+
+
+Similarity/list endpoints use the existing content authorization. Lexical profiles are private
+derived data, not an anonymization guarantee; hash samples must be protected with the source
+DB. API responses omit the hash arrays and transcripts. Matching never follows source URLs or
+calls a model. Warnings are advisory and cannot bypass versioned approval/state guards. Legacy
+backfill is explicit, bounded and version-protected; no read silently writes profile data.

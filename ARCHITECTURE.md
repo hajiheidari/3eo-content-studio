@@ -3,12 +3,13 @@
 The production Ubuntu host is unavailable in this session: no host, SSH identity,
 service inventory, or approved inspection route was supplied. No production commands
 were run. Espadna Sim's containers, data, 08:00 Tehran job, and reverse proxy are untouched.
-The development machine is Debian 13, Python 3.12, 5 visible CPUs, approximately 33 GiB
-available RAM and 60 GiB available disk at inspection. These are cloud development
-resources, not evidence about the founder's server. GPU availability is not assumed.
+The original M0 cloud session reported Debian 13, Python 3.12, 5 visible CPUs, approximately
+33 GiB available RAM and 60 GiB available disk. These are historical development measurements,
+not current production resources. GPU availability is not assumed.
 
 Use one Python application with FastAPI and SQLAlchemy. SQLite supports isolated local
-work; PostgreSQL is the production target, pending integration validation. Alembic owns
+work; PostgreSQL is the production target. Local 16.2 and hosted CI 17.11 integration have
+passed; this does not establish production readiness. Alembic owns
 schema changes. Avoid Redis until durable worker concurrency warrants it. Large media
 will live outside the database. Research providers are interchangeable; default is unavailable,
 never fabricated analysis. Submitted URLs are identifiers only. The opt-in YouTube metadata operation calls a fixed
@@ -38,7 +39,7 @@ inline decisions bind approval to the reviewed revision, and callback acknowledg
 separate from durable command/reply processing. The YouTube metadata adapter has a one-hour
 cache and atomic Tehran-date request limits; it is disabled by default and tested with mocks.
 
-Next: verify PostgreSQL 17 CI and isolated live bot acceptance; Instagram metadata permissions;
+Next: current-head CI and isolated live bot acceptance; Instagram metadata permissions;
 isolated AI acceptance and provider project controls; producer and script approvals; media processing;
 dashboard, operator reconciliation, monitoring and security hardening.
 
@@ -48,3 +49,11 @@ concurrent/ambiguous duplicate generations; successful results are cached indepe
 item/audit commit. Daily request reservations are shared by the application database. These
 controls do not assert a dollar budget. Real model availability, quality, latency and billing
 remain unverified. Requests are opt-in only; no live model was called during development.
+
+Migration 0006 stores bounded lexical profiles derived from authorized transcripts and Persian
+research. Writes maintain them in the same item transaction. Reads compare a bounded 200-row
+page and return explicit coverage, never workflow mutations. Equality uses normalized text
+digests; near matching uses word/shingle hash samples and a conservative heuristic threshold.
+Old unindexed records are counted and require explicit backfill. Reports snapshot warnings
+without excluding candidates. Status-filtered cursor lists support saved/approved review.
+Semantic/cross-language matching and real-world accuracy evaluation remain out of scope.

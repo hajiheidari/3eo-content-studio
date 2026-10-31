@@ -32,6 +32,7 @@ class Item(Base):
     research: Mapped[str | None] = mapped_column(Text)
     source_metadata: Mapped[str | None] = mapped_column(Text)
     research_provenance: Mapped[str | None] = mapped_column(Text)
+    similarity_profile: Mapped[str | None] = mapped_column(Text)
     score: Mapped[float | None] = mapped_column(Float)
     version: Mapped[int] = mapped_column(default=1, server_default="1")
     __mapper_args__ = {"version_id_col": version}

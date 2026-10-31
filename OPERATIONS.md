@@ -84,3 +84,17 @@ The cache identity includes source/transcript, model, prompt/schema and output s
 intentional configuration/transcript change can create a new billable request; do not change
 settings merely to bypass an uncertain claim. Keep model/cap configuration consistent across
 API processes sharing this database. Monetary controls also belong in the provider project.
+
+## Similarity profiles and review coverage
+Migration 0006 does not backfill old source text inside the migration. New transcript/research
+writes maintain the derived profile. For existing data, explicitly run the bounded backfill
+command in README with this application's isolated DATABASE_URL. It has no network/provider
+calls and changes no workflow statuses. Inspect reported conflicts/invalid IDs before another
+run. The optimistic-version update may invalidate an older inline button; reopen the idea.
+
+Matching reads at most 200 indexed records per page and reports older/unindexed coverage.
+A daily report snapshots only the current page's advisory warnings. Follow the returned cursor
+or /similar continuation command to examine older records. Neither absent nor present warnings
+authorize automatic content decisions. No automatic record deletion, merging or report filtering
+was added. Derived profiles belong in the same private source backup; reindexing is possible
+from authorized source data but must not race unreviewed production changes.

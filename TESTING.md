@@ -3,9 +3,9 @@
 Run `uv sync --frozen`, `uv run --frozen pytest -q`, and
 `uv run --frozen ruff check src tests migrations scripts`.
 
-Current full result: 120 passed, no skips, one Starlette TestClient deprecation warning. This was
+Current full result: 144 passed, no skips, one Starlette TestClient deprecation warning. This was
 run with a temporary PostgreSQL 16.2 instance on loopback, which was stopped on completion.
-Without an explicit PostgreSQL test URL the ordinary run passes 117 tests and skips three.
+Without an explicit PostgreSQL test URL the ordinary run passes 140 tests and skips four.
 
 Tests use temporary SQLite, an in-process API and mocked Telegram/YouTube/OpenAI transports. No live
 messages, external API keys, paid calls, production services or actual videos are accessed.
@@ -21,7 +21,10 @@ repeat upgrade, verify schema/model parity and health, and exercise atomic quota
 both engines. AI tests additionally cover disabled/budget gates, schema/prompt boundaries,
 result reuse across restart, pre-HTTP claims, concurrent duplicate/cap races, timezone resets,
 refusal/incomplete/malformed output, redirects, safe retries and uncertain outcomes. Migration
-0005 preserves legacy rows and validates research-attempt model parity. CI provisions PostgreSQL 17; its remote run must still be verified independently.
+0005 preserves legacy rows and validates research-attempt model parity. Migration 0006 adds
+nullable similarity profiles; explicit backfill and read-only matching/status filters are tested
+on both databases. Baseline GitHub CI passed all 120 pre-similarity tests with PostgreSQL 17.11;
+check the PR for current-head CI independently.
 
 ## Disposable PostgreSQL
 To use an existing isolated loopback database named `studio_test`, supply
@@ -47,3 +50,9 @@ real credentials are not required to run these tests.
 
 The AI suite clears live provider/key settings and uses fake keys and httpx.MockTransport.
 No actual OpenAI request/model evaluation or monetary budget assertion is part of these results.
+
+Similarity regression cases cover Persian/Arabic spelling and digits, Unicode forms, normalized
+copies and small edits, short/reordered/unrelated/cross-language negatives, profile bounds,
+old-research suppression, warning-only approvals, immutable report snapshots, scan cursors,
+missing legacy profiles and saved/approved pagination. This is a lexical heuristic regression
+suite, not a real-world semantic duplicate-detection accuracy benchmark.

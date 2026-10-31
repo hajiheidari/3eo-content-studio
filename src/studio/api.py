@@ -4,9 +4,10 @@ import json
 import os
 import re
 from datetime import datetime, timezone
+from typing import Literal
 from zoneinfo import ZoneInfo
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
@@ -18,6 +19,7 @@ from .ai import AIInputLimit, ResearchBlocked, ResearchQuotaExceeded, configured
 from .domain import TRANSITIONS, normalize_url, rank, report_day
 from .metadata import SourceMetadata, UnconfiguredMetadata, YouTubeMetadata, reserve_quota
 from .research import Research
+from .similarity import candidates, profile
 from .storage import (
     Audit,
     Cursor,
@@ -180,15 +182,31 @@ def create_app(database_url=None, token=None, provider=None, telegram_token=None
             return {"attempts": attempts, "usage": usage}
 
     @app.get("/items", dependencies=[Depends(authorized)])
-    def items():
+    def items(status: Literal["DISCOVERED", "RESEARCHED", "SAVED", "IDEA_APPROVED",
+                              "REJECTED", "MORE_RESEARCH"] | None = None,
+              before_id: int | None = Query(default=None, gt=0),
+              limit: int = Query(default=100, ge=1, le=100)):
         with sessions() as session:
-            return [serialize(i) for i in session.scalars(
-                select(Item).order_by(Item.id.desc()).limit(100))]
+            query = select(Item)
+            if status:
+                query = query.where(Item.status == status)
+            if before_id is not None:
+                query = query.where(Item.id < before_id)
+            return [serialize(i) for i in session.scalars(query.order_by(Item.id.desc()).limit(limit))]
+
+    @app.get("/items/{item_id}/similar", dependencies=[Depends(authorized)])
+    def similar_items(item_id: int, before_id: int | None = Query(default=None, gt=0),
+                      limit: int = Query(default=5, ge=1, le=10)):
+        with sessions() as session:
+            item = get_item(session, item_id)
+            return {"item_id": item.id, "source_version": item.version,
+                    **candidates(session, item, before_id, limit)}
 
     @app.get("/items/{item_id}", dependencies=[Depends(authorized)])
     def item_detail(item_id: int):
         with sessions() as session:
-            return serialize(get_item(session, item_id))
+            item = get_item(session, item_id)
+            return serialize(item) | {"similarity": candidates(session, item)}
 
     @app.put("/items/{item_id}/transcript")
     def transcript(item_id: int, body: Transcript, request: Request, actor=Depends(authorized)):
@@ -201,6 +219,7 @@ def create_app(database_url=None, token=None, provider=None, telegram_token=None
                 item.author = body.author
             if "published_at" in body.model_fields_set:
                 item.published_at = body.published_at
+            item.similarity_profile = profile(item.transcript, item.research)
             return {"status": "stored", "metadata_source": "user supplied"}
         return mutate(request, actor, body.model_dump(exclude_unset=True), action)
 
@@ -257,6 +276,7 @@ def create_app(database_url=None, token=None, provider=None, telegram_token=None
                 # Provider messages can contain credentials or source text; never return them.
                 raise HTTPException(503, "Research provider unavailable; submit reviewed research") from None
             item.research = result.model_dump_json()
+            item.similarity_profile = profile(item.transcript, item.research)
             if body is not None:
                 origin = {"kind": "reviewed_manual", "basis": "authorized_transcript"}
             elif hasattr(provider, "provenance"):
@@ -298,7 +318,7 @@ def create_app(database_url=None, token=None, provider=None, telegram_token=None
             existing = session.get(Report, day)
             if existing:
                 return {"day": day, "ideas": json.loads(existing.payload), "duplicate": True}
-            ideas = [serialize(i) for i in session.scalars(
+            ideas = [serialize(i) | {"similarity": candidates(session, i)} for i in session.scalars(
                 select(Item).where(Item.status == "RESEARCHED")
                 .order_by(Item.score.desc(), Item.id).limit(5))]
             session.add(Report(day=day, payload=json.dumps(ideas, ensure_ascii=False)))

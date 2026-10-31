@@ -89,7 +89,9 @@ Private-chat commands:
 - `/analyze ID` uses a configured provider; default is unavailable.
 - `/metadata ID` requests official YouTube metadata if the optional adapter is configured.
 - `/idea ID` shows the research, evidence limitations and available decisions.
-- `/ideas`, `/approve ID`, `/reject ID`, `/save ID`, `/research ID`, `/help`.
+- `/ideas`, `/saved`, `/approved` list ideas; use the displayed numeric cursor to continue.
+- `/similar ID` checks lexical overlap; `/similar ID BEFORE_ID` continues through older records.
+- `/approve ID`, `/reject ID`, `/save ID`, `/research ID`, `/help`.
 
 Research detail and daily reports include Persian inline buttons for the actions permitted by
 the current state. Buttons contain the item version; a button from an earlier research revision
@@ -165,6 +167,46 @@ project controls and review current model pricing separately before activation. 
 `GET /operations/research` shows attempt states, reservations, response IDs and reported token
 usage without transcripts, output text or credentials. See [operations](OPERATIONS.md) and
 [costs](COSTS.md). Operator reconciliation of blocked attempts remains a deployment gate.
+
+## Advisory similarity and review lists
+Exact platform/content-ID deduplication still prevents the same link being ingested twice.
+For different source IDs, local lexical matching can flag identical normalized text or high
+text overlap. No embeddings, model calls or external services are used.
+
+`GET /items/{id}/similar` compares authorized transcripts and, separately, Persian research
+(title, summary and original angle). `/idea ID` and new daily-report snapshots show the same
+advisory warnings, including the other idea ID/link and status. Rejected or approved ideas can
+appear for historical context. No warning automatically merges, deletes, suppresses, rejects or
+approves either item; founder approval is still explicit and version-checked.
+
+Normalization covers case, Unicode compatibility forms, Persian/Arabic yeh/kaf, digit variants,
+diacritics, punctuation and half-space variants. Very short/repetitive text is ignored: at least
+12 tokens and eight distinct tokens are required. Full normalized equality is distinguished
+from a heuristic overlap score using bounded word/five-word-shingle hash samples. Near matches
+need a length ratio of at least 0.6 and weighted overlap of at least 0.80. The score is lexical
+overlap, not a probability of duplication, quality or plagiarism. Titles alone are insufficient.
+Translations, substantial paraphrases and short excerpts may not match; common text can also
+produce false positives. This feature has synthetic regression tests, not a measured semantic
+accuracy benchmark.
+
+Each query checks up to 200 indexed records, newest IDs first, and returns up to five matches
+(`limit` may be 1–10). `more_to_scan`, `next_before_id`, `scanned`, `unindexed_count` and
+`sufficient_text` explain coverage. Supply `before_id` to inspect older pages. Empty results
+never prove originality. The main idea list additionally supports `status`, `before_id` and
+`limit` (1–100), which power the saved/approved Telegram lists.
+
+New transcript/research writes maintain bounded profiles automatically. Old records need an
+explicit backfill after migration 0006; a read never silently updates them:
+
+```sh
+uv run --frozen python -m studio.similarity --limit 1000 --batch-size 50
+```
+
+This updates only missing derived profiles in the DATABASE_URL selected for this application,
+without network access or workflow transitions. It reports indexed/conflicted/invalid counts.
+Concurrent edits are protected by item versions; conflicting batches can be retried explicitly.
+Indexing increments item versions, so reopen an idea if an old approval button becomes stale.
+Backfill was tested only against disposable databases; it was not run on production.
 
 ## Reports and delivery
 `POST /reports/prepare` alone sends nothing. The worker checks the Tehran date on each tick and,

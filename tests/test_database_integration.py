@@ -151,3 +151,35 @@ def test_research_claim_and_budget_are_atomic_on_migrated_database(migrated_url)
         assert instance.claim(key, url).title_fa == RESEARCH["title_fa"]
     finally:
         engine.dispose()
+
+
+def test_similarity_profiles_and_filters_on_migrated_database(migrated_url):
+    from test_similarity import TEXT
+
+    from studio.similarity import backfill
+    from studio.storage import database
+
+    app = create_app(migrated_url, token="similarity-test")
+    try:
+        with Session(app.state.engine) as session:
+            legacy = session.get(Item, 1)
+            legacy.transcript = TEXT
+            session.commit()
+        with TestClient(app, headers={"Authorization": "Bearer similarity-test"}) as client:
+            other = client.post("/items", json={"url": "https://youtu.be/zzzzzzzzzzz"}).json()["id"]
+            assert client.put(f"/items/{other}/transcript", json={
+                "text": TEXT, "provenance": "authorized test fixture"}).status_code == 200
+            before = client.get(f"/items/{other}/similar").json()
+            assert before["unindexed_count"] == 1 and before["matches"] == []
+            engine, sessions = database(migrated_url)
+            try:
+                assert backfill(sessions)["indexed"] == 1
+            finally:
+                engine.dispose()
+            result = client.get(f"/items/{other}/similar").json()
+            assert result["matches"][0]["id"] == 1
+            assert result["matches"][0]["match"] == "same_normalized_text"
+            assert client.get("/items", params={"status": "DISCOVERED"}).status_code == 200
+            assert client.get(f"/items/{other}").json()["status"] == "DISCOVERED"
+    finally:
+        app.state.engine.dispose()
