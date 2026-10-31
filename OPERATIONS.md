@@ -57,3 +57,30 @@ Do not delete usage rows to bypass a daily limit. Account-wide API quota and use
 applications are not measured. Keep HTTP debug logs disabled so API-key query parameters stay
 private. Metadata refresh cannot silently change an already researched idea; reopen research
 first when its cache has expired. No live metadata calls were made during validation.
+
+## AI attempt ledger
+The AI adapter is disabled unless its provider/model, dedicated key, budget approval flag and
+explicit daily cap are configured. Never log authorization headers, HTTP exceptions or model
+inputs/outputs. Admin-only GET /operations/research displays only operational attempt metadata.
+
+A research_attempts row and api_usage reservation commit before generation. States:
+
+- `submitting`: the claim committed; a request may be in flight or interrupted.
+- `completed`: a validated result is durable and reusable without another generation.
+- `retryable`: a known safe connection/rate-limit failure; a new explicit call after cooldown
+  may claim it, at most three attempts. There is no timer automatically regenerating drafts.
+- `uncertain`: request/response interruption or ambiguous provider error; never resend blindly.
+- `failed`: rejected configuration, unusable output/refusal/incomplete response, or safe-retry
+  exhaustion. No automatic retry or model fallback.
+
+A crash before HTTP can leave a conservative submitting claim even if no usage occurred. A
+crash after completed-attempt commit but before item/replay-receipt commit reuses the validated
+cached result on the next explicit request. Do not delete claims to work around a blocked state.
+Check the provider response ID/account usage and exact source before making an operator decision;
+reconciliation tooling and failure notifications remain pending. Keep attempt and source data
+in the same protected backup/retention plan. Never infer invoice cost from a request count.
+
+The cache identity includes source/transcript, model, prompt/schema and output settings. An
+intentional configuration/transcript change can create a new billable request; do not change
+settings merely to bypass an uncertain claim. Keep model/cap configuration consistent across
+API processes sharing this database. Monetary controls also belong in the provider project.

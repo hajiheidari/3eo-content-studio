@@ -31,6 +31,7 @@ class Item(Base):
     transcript_provenance: Mapped[str | None] = mapped_column(Text)
     research: Mapped[str | None] = mapped_column(Text)
     source_metadata: Mapped[str | None] = mapped_column(Text)
+    research_provenance: Mapped[str | None] = mapped_column(Text)
     score: Mapped[float | None] = mapped_column(Float)
     version: Mapped[int] = mapped_column(default=1, server_default="1")
     __mapper_args__ = {"version_id_col": version}
@@ -59,6 +60,26 @@ class Usage(Base):
     __tablename__ = "api_usage"
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
     count: Mapped[int] = mapped_column(default=0)
+
+
+class ResearchAttempt(Base):
+    """Persist the request claim before a potentially billable generation."""
+
+    __tablename__ = "research_attempts"
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    source_url: Mapped[str] = mapped_column(Text)
+    provider: Mapped[str] = mapped_column(String(30))
+    model: Mapped[str] = mapped_column(String(100))
+    status: Mapped[str] = mapped_column(String(20))
+    attempts: Mapped[int] = mapped_column(default=1)
+    created_at: Mapped[float] = mapped_column(Float)
+    updated_at: Mapped[float] = mapped_column(Float)
+    available_at: Mapped[float] = mapped_column(Float, default=0)
+    payload: Mapped[str | None] = mapped_column(Text)
+    response_id: Mapped[str | None] = mapped_column(String(200))
+    input_tokens: Mapped[int | None] = mapped_column()
+    output_tokens: Mapped[int | None] = mapped_column()
+    error: Mapped[str | None] = mapped_column(String(100))
 
 
 class Receipt(Base):

@@ -2,7 +2,8 @@
 
 Private, approval-driven Persian SEO research and production system. The Scout manual path,
 opt-in Telegram polling and durable daily-report outbox are implemented. M1 is **not complete**:
-an AI network adapter, automatic discovery and live acceptance tests remain pending.
+automatic discovery and live acceptance tests remain pending.
+An optional OpenAI research adapter is implemented and disabled by default.
 Optional official YouTube metadata and versioned Persian inline decisions are implemented.
 Video production and the dashboard are not implemented. See [status](DEVELOPMENT_STATUS.md)
 and [original brief](REQUIREMENTS.md).
@@ -14,7 +15,7 @@ Python 3.12+ and uv required. From this repository:
 uv sync --frozen
 uv run --frozen alembic upgrade head
 uv run --frozen pytest -q
-uv run --frozen ruff check src tests migrations
+uv run --frozen ruff check src tests migrations scripts
 uv run --frozen uvicorn studio.api:create_app --factory --host 127.0.0.1 --port 8000
 ```
 
@@ -119,6 +120,51 @@ The adapter refuses redirects, compressed/oversized responses, mismatched source
 fields. Once an idea is researched, expired metadata cannot be refreshed until MORE_RESEARCH.
 Manual author/date overrides are preserved separately from the original API metadata. Requests
 are explicit; submitting a link alone never starts a metadata call.
+
+## Optional AI research (disabled by default)
+The default `STUDIO_AI_PROVIDER=none` never calls an external AI service. The manual reviewed
+research path remains available. No real model/key or live paid generation was used in tests.
+
+An optional OpenAI Responses adapter is implemented following the official
+[Structured Outputs documentation](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses).
+To prepare an isolated live acceptance test, first choose an explicitly supported model and
+approve its budget, then supply these values securely to the API process:
+
+| Variable | Meaning |
+|---|---|
+| `STUDIO_AI_PROVIDER` | `openai` to intentionally select the adapter |
+| `STUDIO_OPENAI_API_KEY` | Dedicated project API key; never an Espadna Sim credential |
+| `STUDIO_AI_MODEL` | Explicit model ID supporting Responses and strict structured output; no default |
+| `STUDIO_AI_BUDGET_APPROVED` | `1` only after the founder has approved live usage |
+| `STUDIO_AI_DAILY_LIMIT` | Explicit reserved-request cap, 1–100 per Tehran calendar day; no enabled default |
+| `STUDIO_AI_MAX_INPUT_BYTES` | Transcript byte limit, default 16000, configurable 256–64000 |
+| `STUDIO_AI_MAX_OUTPUT_TOKENS` | Output/reasoning token limit, default 2048, configurable 256–8192 |
+
+No setting was enabled by the agent. This approval flag records an operator's prior decision;
+it is not a substitute for obtaining approval. Keep the adapter disabled until model, budget,
+transcript privacy and a secure dedicated-key setup have been reviewed. No key is needed to
+run the mock suite. No model is automatically substituted, installed or downloaded.
+
+With explicit configuration, `/analyze ID` or bodyless `POST /items/{id}/research` submits the
+authorized transcript as untrusted data. The adapter uses a fixed official endpoint, no tools,
+no redirects, `store: false`, strict JSON schema, bounded input/output and sanitized errors.
+Refusals, incomplete responses and invalid research do not become researched/approved items.
+AI results are labeled as drafts, linked to their provider/model/attempt and require founder
+fact checking and explicit idea approval.
+
+A durable attempt claim and daily request reservation commit **before** the HTTP call.
+Identical successful requests reuse their stored result across restart without another call.
+Concurrent duplicates, interrupted submissions and uncertain timeouts are blocked rather than
+blindly regenerated. Only known safe connection failures/rate limits permit a later explicit
+retry after cooldown, at most three total attempts. No automatic network retry loop exists.
+Failed attempts consume reservations; the daily limit covers all configured models in this
+application database, not other applications using the provider account.
+
+These controls bound requests and input/output size, **not a dollar invoice**. Set provider-side
+project controls and review current model pricing separately before activation. Admin-only
+`GET /operations/research` shows attempt states, reservations, response IDs and reported token
+usage without transcripts, output text or credentials. See [operations](OPERATIONS.md) and
+[costs](COSTS.md). Operator reconciliation of blocked attempts remains a deployment gate.
 
 ## Reports and delivery
 `POST /reports/prepare` alone sends nothing. The worker checks the Tehran date on each tick and,

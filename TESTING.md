@@ -3,11 +3,11 @@
 Run `uv sync --frozen`, `uv run --frozen pytest -q`, and
 `uv run --frozen ruff check src tests migrations scripts`.
 
-Current full result: 82 passed, no skips, one Starlette TestClient deprecation warning. This was
+Current full result: 120 passed, no skips, one Starlette TestClient deprecation warning. This was
 run with a temporary PostgreSQL 16.2 instance on loopback, which was stopped on completion.
-Without an explicit PostgreSQL test URL the ordinary run passes 80 tests and skips two.
+Without an explicit PostgreSQL test URL the ordinary run passes 117 tests and skips three.
 
-Tests use temporary SQLite, an in-process API and mocked Telegram/YouTube transports. No live
+Tests use temporary SQLite, an in-process API and mocked Telegram/YouTube/OpenAI transports. No live
 messages, external API keys, paid calls, production services or actual videos are accessed.
 The local test server is separate test tooling; it is not an application runtime dependency.
 
@@ -18,7 +18,10 @@ redirect/size/timeout protections, caching, manual overrides and concurrent dail
 
 Database tests upgrade preserved 0001 source data through 0002 pending outbox data to head,
 repeat upgrade, verify schema/model parity and health, and exercise atomic quota limits on
-both engines. CI provisions PostgreSQL 17; its remote run must still be verified independently.
+both engines. AI tests additionally cover disabled/budget gates, schema/prompt boundaries,
+result reuse across restart, pre-HTTP claims, concurrent duplicate/cap races, timezone resets,
+refusal/incomplete/malformed output, redirects, safe retries and uncertain outcomes. Migration
+0005 preserves legacy rows and validates research-attempt model parity. CI provisions PostgreSQL 17; its remote run must still be verified independently.
 
 ## Disposable PostgreSQL
 To use an existing isolated loopback database named `studio_test`, supply
@@ -41,3 +44,6 @@ throwaway tests only.
 Live bot/metadata/provider acceptance, discovery, complete media rendering/export and production
 resource limits are not covered. Default AI and metadata adapters remain disabled/unavailable;
 real credentials are not required to run these tests.
+
+The AI suite clears live provider/key settings and uses fake keys and httpx.MockTransport.
+No actual OpenAI request/model evaluation or monetary budget assertion is part of these results.

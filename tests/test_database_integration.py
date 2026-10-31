@@ -113,3 +113,41 @@ def test_quota_limit_is_atomic_on_migrated_database(migrated_url):
             assert session.get(Usage, "youtube:2026-10-31").count == 3
     finally:
         engine.dispose()
+
+
+def test_research_claim_and_budget_are_atomic_on_migrated_database(migrated_url):
+    from concurrent.futures import ThreadPoolExecutor
+    from datetime import datetime, timezone
+
+    from sqlalchemy.orm import sessionmaker
+    from test_scout_delivery import RESEARCH
+
+    from studio.ai import AIConfig, OpenAIResearch, ResearchBlocked, ResearchQuotaExceeded
+    from studio.research import Research
+    from studio.storage import ResearchAttempt, Usage
+
+    engine = create_engine(migrated_url)
+    try:
+        now = datetime(2026, 10, 31, 12, tzinfo=timezone.utc)
+        instance = OpenAIResearch("fake-test-key", AIConfig("test-model", 1, budget_approved=True),
+                                  sessionmaker(engine), clock=lambda: now)
+        url = "https://www.youtube.com/watch?v=abcdefghijk"
+        key = instance.fingerprint(instance.request("same transcript", url))
+        def claim(_):
+            try:
+                return instance.claim(key, url) is None
+            except ResearchBlocked:
+                return False
+        with ThreadPoolExecutor(max_workers=5) as pool:
+            assert sum(pool.map(claim, range(10))) == 1
+        other_key = instance.fingerprint(instance.request("different transcript", url))
+        with pytest.raises(ResearchQuotaExceeded):
+            instance.claim(other_key, url)
+        with Session(engine) as session:
+            assert session.get(Usage, "research:openai:2026-10-31").count == 1
+            assert len(list(session.scalars(select(ResearchAttempt)))) == 1
+        instance.finish(key, "completed", result=Research.model_validate(RESEARCH),
+                        response={"id": "resp_test", "usage": {"input_tokens": 50, "output_tokens": 20}})
+        assert instance.claim(key, url).title_fa == RESEARCH["title_fa"]
+    finally:
+        engine.dispose()

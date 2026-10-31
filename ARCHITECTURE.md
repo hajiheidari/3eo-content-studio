@@ -10,7 +10,7 @@ resources, not evidence about the founder's server. GPU availability is not assu
 Use one Python application with FastAPI and SQLAlchemy. SQLite supports isolated local
 work; PostgreSQL is the production target, pending integration validation. Alembic owns
 schema changes. Avoid Redis until durable worker concurrency warrants it. Large media
-will live outside the database. Research providers are injected; default is unavailable,
+will live outside the database. Research providers are interchangeable; default is unavailable,
 never fabricated analysis. Submitted URLs are identifiers only. The opt-in YouTube metadata operation calls a fixed
 official Google endpoint with a validated video ID; submitted URLs and redirects are never fetched.
 
@@ -39,5 +39,12 @@ separate from durable command/reply processing. The YouTube metadata adapter has
 cache and atomic Tehran-date request limits; it is disabled by default and tested with mocks.
 
 Next: verify PostgreSQL 17 CI and isolated live bot acceptance; Instagram metadata permissions;
-configured AI adapter; producer and script approvals; media processing;
+isolated AI acceptance and provider project controls; producer and script approvals; media processing;
 dashboard, operator reconciliation, monitoring and security hardening.
+
+The optional OpenAI Responses adapter uses strict structured output and no tools. Migration
+0005 adds research_attempts and source research provenance. A pre-HTTP durable claim prevents
+concurrent/ambiguous duplicate generations; successful results are cached independently of
+item/audit commit. Daily request reservations are shared by the application database. These
+controls do not assert a dollar budget. Real model availability, quality, latency and billing
+remain unverified. Requests are opt-in only; no live model was called during development.

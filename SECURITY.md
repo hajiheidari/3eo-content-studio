@@ -22,3 +22,19 @@ Inline callback actions require the approved sender in their exact private chat 
 an expected item version. Replaying the same update returns its existing mutation receipt;
 using an old button for a changed idea fails with 409. Old unversioned report snapshots do not
 create new keyboards. Callback acknowledgements never authorize or repeat mutations.
+
+
+The optional AI adapter defaults off and requires a dedicated key, explicit compatible model,
+budget approval flag and daily cap. It calls one fixed OpenAI endpoint without tools, redirects,
+proxy-environment inheritance or automatic retries. Untrusted transcript content is supplied
+separately from instructions. This reduces instruction confusion but does not prove generated
+claims true; all drafts remain labeled and require founder review. Invalid/refused/incomplete
+responses do not mutate the source research or advance approval.
+
+Attempt claims commit before generation and conservative unknown outcomes are held for review.
+Cached research is private application data. The transcript is not copied into the operational
+ledger, but validated draft output is retained there for crash-safe reuse. Admin operational
+responses omit both transcript and draft. No secret, authorization header or raw provider error
+is logged or returned. store:false is configured; provider data-retention policies must still be
+reviewed before any real transcript is transmitted. Ordinary tests clear live provider settings
+and keys and use mocked transport. No external AI request occurred in development.

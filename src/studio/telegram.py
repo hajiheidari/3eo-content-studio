@@ -10,12 +10,16 @@ def idea_text(item):
     metadata = item.get("metadata") or {}
     source = (f"\nعنوان منبع: {metadata['title']}\nمشخصات: API رسمی یوتیوب"
               if metadata else "\nمشخصات منبع: ورود دستی یا نامشخص")
+    origin = item.get("research_provenance") or {}
+    label = ("پیش‌نویس هوش مصنوعی؛ متکی به متن ارائه‌شده و نیازمند راستی‌آزمایی"
+             if origin.get("kind") in {"ai_draft", "provider_draft"} else "پژوهش ثبت‌شده دستی یا قبلی")
     if not research:
         return (f"ایده {item['id']} — {item['status']}\n{item['url']}{source}\n"
                 "پژوهش هنوز ثبت نشده است.")
     return "\n".join([
         f"ایده {item['id']} — {item['status']} — امتیاز {item.get('score')}",
         research["title_fa"], item["url"] + source,
+        label,
         f"سازنده: {item.get('author') or 'نامشخص'}",
         f"تاریخ منبع: {item.get('published_at') or 'نامشخص'}",
         research["summary_fa"],
@@ -133,6 +137,11 @@ class TelegramGateway:
                 return "ثبت شد."
             if response.status_code == 409 and expected_version is not None:
                 return "این دکمه قدیمی است یا وضعیت تغییر کرده؛ ایده را دوباره با /idea باز کنید."
+            if command == "/analyze" and response.status_code == 429:
+                return "سقف درخواست پژوهش امروز پر شده است؛ پژوهش بازبینی‌شده را دستی ثبت کنید."
+            if (command == "/analyze" and response.status_code == 409 and
+                    response.json().get("detail") == "Previous research attempt requires review or cooldown"):
+                return "درخواست قبلی نیاز به بررسی یا انتظار دارد؛ برای جلوگیری از هزینه دوباره، خودکار تکرار نمی‌شود."
             if command == "/metadata" and response.status_code in {429, 502, 503}:
                 return "مشخصات دریافت نشد؛ اتصال غیرفعال، سهمیه تمام یا منبع در دسترس نیست. ورود دستی ممکن است."
             if response.status_code in {502, 503}:

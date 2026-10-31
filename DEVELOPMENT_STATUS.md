@@ -21,11 +21,17 @@ M2–M4 (producer, media, dashboard) remain unimplemented. This branch is a draf
 - Official YouTube metadata adapter, disabled by default: title/creator/date only, fixed Google
   endpoint, validated source ID, no redirects/media/transcripts, bounded uncompressed responses.
   One-hour cache and atomic daily request reservations. Manual links still work without a key.
-- Migrations 0001–0004. Existing source data and pending 0002 outbox messages survive upgrade;
+- Migrations 0001–0005. Existing source data and pending 0002 outbox messages survive upgrade;
   new keyboard/metadata fields remain nullable. Schema/model parity tested on both databases.
+- Optional OpenAI Responses adapter, disabled by default; explicit model/key/budget/cap gates,
+  strict structured output, input/output/time/response bounds, refusal/incomplete handling,
+  research provenance and visible draft labeling. No default paid model or automatic fallback.
+- Durable pre-HTTP research_attempts claims, shared daily reservations, completed-result reuse,
+  conservative uncertain states and bounded explicit safe retries. Admin status omits content.
+  These controls bound requests/tokens, not currency invoices.
 
 ## Validation (2026-10-31)
-82 tests passed, none skipped, using the locked Python 3.12 environment and a temporary
+120 tests passed, none skipped, using the locked Python 3.12 environment and a temporary
 loopback-only PostgreSQL 16.2 test instance. That instance was stopped after testing. SQLite
 also passed. Ruff passed. The remaining warning is Starlette's httpx TestClient deprecation.
 
@@ -38,10 +44,12 @@ concurrent quota reservations. Migrations run from 0001 with existing source dat
 GitHub-hosted runs still fail before visible job steps; logs are unavailable via the connector.
 Root cause remains unconfirmed. Local PostgreSQL success is not a green GitHub CI result.
 PostgreSQL 17 on the CI service, live Telegram, live YouTube and real AI remain unverified.
+AI transport, spend-approval configuration and all generation responses were mocked; no live
+model quality, latency, availability or invoice estimate is claimed.
 
 ## Remaining work
-Do not mark M1 complete. Pending: configured AI network provider and cost/timeout controls;
-real isolated bot/metadata acceptance tests; Instagram metadata permissions; near-duplicates;
+Do not mark M1 complete. Pending: approved model/budget selection and real isolated
+bot/metadata/AI acceptance tests; Instagram metadata permissions; near-duplicates;
 automatic discovery, quota-aware feeds and incremental caching. AI-generated facts still need
 founder verification. Current report placeholders for incomplete research are not real findings.
 

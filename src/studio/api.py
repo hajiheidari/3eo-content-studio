@@ -9,15 +9,26 @@ from zoneinfo import ZoneInfo
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import StaleDataError
 
+from .ai import AIInputLimit, ResearchBlocked, ResearchQuotaExceeded, configured_provider
 from .domain import TRANSITIONS, normalize_url, rank, report_day
 from .metadata import SourceMetadata, UnconfiguredMetadata, YouTubeMetadata, reserve_quota
-from .research import Research, UnconfiguredProvider
-from .storage import Audit, Cursor, Delivery, Item, Receipt, Report, database
+from .research import Research
+from .storage import (
+    Audit,
+    Cursor,
+    Delivery,
+    Item,
+    Receipt,
+    Report,
+    ResearchAttempt,
+    Usage,
+    database,
+)
 
 
 def serialize(item):
@@ -29,6 +40,7 @@ def serialize(item):
         "status": item.status, "score": item.score, "metadata": metadata,
         "version": item.version,
         "research": json.loads(item.research) if item.research else None,
+        "research_provenance": json.loads(item.research_provenance) if item.research_provenance else None,
     }
 
 
@@ -42,7 +54,7 @@ def create_app(database_url=None, token=None, provider=None, telegram_token=None
     users = allowed_users if allowed_users is not None else {
         int(x) for x in os.getenv("STUDIO_TELEGRAM_USERS", "").split(",") if x.strip()
     }
-    provider = provider or UnconfiguredProvider()
+    provider = provider if provider is not None else configured_provider(sessions)
     if metadata_provider is None:
         selected = os.getenv("STUDIO_METADATA_PROVIDER", "none")
         if selected not in {"none", "youtube"}:
@@ -151,6 +163,22 @@ def create_app(database_url=None, token=None, provider=None, telegram_token=None
                     "next": "Supply an authorized transcript; metadata is user supplied"}
         return mutate(request, actor, body.model_dump(), action)
 
+    @app.get("/operations/research")
+    def research_status(actor=Depends(authorized)):
+        if actor != "admin":
+            raise HTTPException(403, "Administrator required")
+        with sessions() as session:
+            attempts = [{"key": a.key, "provider": a.provider, "model": a.model,
+                         "status": a.status, "attempts": a.attempts, "error": a.error,
+                         "updated_at": a.updated_at, "available_at": a.available_at,
+                         "response_id": a.response_id, "input_tokens": a.input_tokens,
+                         "output_tokens": a.output_tokens}
+                        for a in session.scalars(select(ResearchAttempt).order_by(
+                            ResearchAttempt.updated_at.desc()).limit(100))]
+            usage = [{"key": u.key, "reserved_requests": u.count} for u in session.scalars(
+                select(Usage).where(Usage.key.like("research:%")).order_by(Usage.key.desc()).limit(31))]
+            return {"attempts": attempts, "usage": usage}
+
     @app.get("/items", dependencies=[Depends(authorized)])
     def items():
         with sessions() as session:
@@ -217,12 +245,26 @@ def create_app(database_url=None, token=None, provider=None, telegram_token=None
                 raise HTTPException(409, "Research not allowed in this state")
             try:
                 result = Research.model_validate(body or provider.analyze(item.transcript, item.url))
-            except ValidationError:
+            except AIInputLimit:
+                raise HTTPException(422, "Transcript exceeds the configured AI byte limit") from None
+            except ResearchQuotaExceeded:
+                raise HTTPException(429, "Daily research request limit reached") from None
+            except ResearchBlocked:
+                raise HTTPException(409, "Previous research attempt requires review or cooldown") from None
+            except ValueError:
                 raise HTTPException(502, "Research provider returned invalid output") from None
             except (RuntimeError, TimeoutError, ConnectionError):
                 # Provider messages can contain credentials or source text; never return them.
                 raise HTTPException(503, "Research provider unavailable; submit reviewed research") from None
             item.research = result.model_dump_json()
+            if body is not None:
+                origin = {"kind": "reviewed_manual", "basis": "authorized_transcript"}
+            elif hasattr(provider, "provenance"):
+                origin = provider.provenance(item.transcript, item.url)
+            else:
+                origin = {"kind": "provider_draft", "basis": "authorized_transcript",
+                          "independent_fact_check": False}
+            item.research_provenance = json.dumps(origin)
             item.score = rank(result.criteria)
             session.add(Audit(item_id=item.id, actor=actor,
                               previous=item.status, current="RESEARCHED"))
