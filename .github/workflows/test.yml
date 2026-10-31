@@ -1,0 +1,14 @@
+name: Foundation checks
+on: [push, pull_request]
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.12'
+      - run: uv sync --frozen
+      - run: uv run pytest -q
+      - run: uv run ruff check src tests migrations
+      - run: uv run alembic upgrade head
