@@ -2,7 +2,8 @@
 
 Private, approval-driven Persian SEO research and production system. The Scout manual path,
 opt-in Telegram polling and durable daily-report outbox are implemented. M1 is **not complete**:
-automatic discovery and live acceptance tests remain pending.
+scheduled discovery and live acceptance tests remain pending.
+An opt-in public-feed discovery inbox is available through the admin API.
 An optional OpenAI research adapter is implemented and disabled by default.
 Optional official YouTube metadata and versioned Persian inline decisions are implemented.
 Video production and the dashboard are not implemented. See [status](DEVELOPMENT_STATUS.md)
@@ -222,3 +223,23 @@ resent: Telegram sendMessage does not offer an idempotency key. See [operations]
 Admin-only `GET /operations/telegram` lists the latest 100 delivery states and polling offset.
 
 Do not expose publicly or deploy until [deployment gates](DEPLOYMENT.md) are satisfied.
+
+## Public-feed discovery inbox (disabled by default)
+No YouTube key or AI provider is required. Migration 0007 adds separate `feed_states` and
+`feed_entries` tables; it does not promote news into source items or reports.
+
+- `GET /discovery/sources`: supported sources, last check/success/error and cooldown.
+- Set `STUDIO_FEEDS_ENABLED=1` deliberately, then admin-authenticated
+  `POST /discovery/sources/google-search-central/collect` performs one bounded collection.
+- `GET /discovery/entries?source=google-search-central&limit=20`: unverified title/date/link
+  metadata with publisher-feed provenance. Follow `next_after_key` using `after_key` for stable
+  key order (not publication-date order). A walk is not a snapshot during new collections.
+
+The first built-in source is the RSS link advertised by the
+[Google Search Central blog](https://developers.google.com/search/blog):
+`https://feeds.feedburner.com/blogspot/amDG`. Additional origins require code review; arbitrary
+feed URLs, schedules and Telegram inbox controls are not implemented. Canonical article links
+must be on `developers.google.com/search/blog/YYYY/MM/slug`. Links are stored, never fetched.
+No article body, transcript, research, approval or publication is generated. Use the inbox for
+manual source selection; promoting an article into the authorized research workflow is pending.
+Disable collection with `STUDIO_FEEDS_ENABLED=0`; existing inbox reads stay available to admins.

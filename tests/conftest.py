@@ -8,6 +8,7 @@ from studio.storage import Base
 @pytest.fixture(autouse=True)
 def isolated_external_configuration(monkeypatch):
     """Developer credentials must never opt ordinary tests into live integrations."""
+    monkeypatch.setenv("STUDIO_FEEDS_ENABLED", "0")
     monkeypatch.setenv("STUDIO_AI_PROVIDER", "none")
     monkeypatch.setenv("STUDIO_AI_BUDGET_APPROVED", "0")
     monkeypatch.setenv("STUDIO_METADATA_PROVIDER", "none")

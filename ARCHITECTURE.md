@@ -57,3 +57,25 @@ digests; near matching uses word/shingle hash samples and a conservative heurist
 Old unindexed records are counted and require explicit backfill. Reports snapshot warnings
 without excluding candidates. Status-filtered cursor lists support saved/approved review.
 Semantic/cross-language matching and real-world accuracy evaluation remain out of scope.
+
+
+## Public feeds
+Migration 0007 isolates discovery metadata from source_items. A fixed reviewed source map
+prevents user-controlled request origins. Only explicit admin collection is supported; no
+background scheduler or Telegram gateway access. A durable conditional update claims each
+source before HTTP and establishes a five-minute crash/failure cooldown. Successful HTTP 200
+or conditional 304 establishes a one-hour cooldown. Owner fencing prevents a delayed previous
+collector from committing after a takeover. ETag/Last-Modified validators and new entry rows
+commit together. A failed download/parse retains the previous validators, inbox and last-success
+stamp, with a sanitized status. URL hashes deduplicate entries after query/fragment removal;
+first-seen title/date metadata remains unchanged on later fetches. Publisher dates are untrusted
+strings, not scheduling input. The inbox has no foreign key into research or approval state.
+
+Transport disallows redirects, environment proxies and compressed replies; bounds are 512 KiB,
+10-second HTTP operation timeout, 20-second stream deadline, 200 entries, 10,000 XML nodes and
+32 levels. UTF-8 only, DTD/entity declarations rejected before ElementTree parsing. RSS 2.0 and
+Atom supported, HTML title markup stripped, canonical publisher article paths required. No
+feed-supplied URL, enclosure, pagination link, stylesheet, body or transcript is downloaded.
+A fixed source still needs a usable TLS/network route and upstream availability; this is not a
+live-service acceptance claim. Feed retention, source configuration UI, scheduled collection,
+article selection/promotion and Telegram inbox review remain future work.

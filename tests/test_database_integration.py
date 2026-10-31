@@ -183,3 +183,41 @@ def test_similarity_profiles_and_filters_on_migrated_database(migrated_url):
             assert client.get(f"/items/{other}").json()["status"] == "DISCOVERED"
     finally:
         app.state.engine.dispose()
+
+
+def test_feed_claim_cache_and_inbox_on_migrated_database(migrated_url):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from sqlalchemy import func
+    from sqlalchemy.orm import sessionmaker
+    from test_feeds import SOURCE, URL
+
+    from studio.feeds import FeedCoolingDown, FeedResponse, collect
+    from studio.storage import FeedEntry, FeedState
+
+    engine = create_engine(migrated_url)
+    sessions = sessionmaker(engine)
+    calls = []
+    class Client:
+        def fetch(self, source, etag, modified):
+            calls.append((etag, modified))
+            if etag:
+                return FeedResponse([], not_modified=True)
+            return FeedResponse([{'url': URL, 'title': 'Official update', 'published_at': None}],
+                                etag='"cached"')
+    def attempt(_):
+        try:
+            return collect(sessions, SOURCE, Client(), now=1000)['added']
+        except FeedCoolingDown:
+            return 0
+    try:
+        with ThreadPoolExecutor(max_workers=5) as pool:
+            assert sum(pool.map(attempt, range(10))) == 1
+        assert len(calls) == 1
+        assert collect(sessions, SOURCE, Client(), now=4600)['not_modified']
+        with sessions() as session:
+            assert session.scalar(select(func.count()).select_from(FeedEntry)) == 1
+            assert session.get(FeedState, SOURCE).etag == '"cached"'
+            assert session.scalar(select(func.count()).select_from(Item)) == 1  # Legacy row only.
+    finally:
+        engine.dispose()

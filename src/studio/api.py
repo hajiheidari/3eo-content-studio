@@ -17,6 +17,7 @@ from sqlalchemy.orm.exc import StaleDataError
 
 from .ai import AIInputLimit, ResearchBlocked, ResearchQuotaExceeded, configured_provider
 from .domain import TRANSITIONS, normalize_url, rank, report_day
+from .feeds import SOURCES, FeedClient, FeedCoolingDown, FeedUnavailable, collect
 from .metadata import SourceMetadata, UnconfiguredMetadata, YouTubeMetadata, reserve_quota
 from .research import Research
 from .similarity import candidates, profile
@@ -24,6 +25,8 @@ from .storage import (
     Audit,
     Cursor,
     Delivery,
+    FeedEntry,
+    FeedState,
     Item,
     Receipt,
     Report,
@@ -47,7 +50,8 @@ def serialize(item):
 
 
 def create_app(database_url=None, token=None, provider=None, telegram_token=None,
-               allowed_users=None, metadata_provider=None, metadata_daily_limit=None):
+               allowed_users=None, metadata_provider=None, metadata_daily_limit=None,
+               feed_client=None):
     engine, sessions = database(database_url or os.getenv("DATABASE_URL", "sqlite:///./studio.db"))
     secret = token or os.getenv("STUDIO_ADMIN_TOKEN")
     gateway_secret = telegram_token or os.getenv("STUDIO_TELEGRAM_API_TOKEN")
@@ -329,6 +333,62 @@ def create_app(database_url=None, token=None, provider=None, telegram_token=None
                 return {"day": day, "ideas": json.loads(session.get(Report, day).payload),
                         "duplicate": True}
             return {"day": day, "ideas": ideas, "duplicate": False}
+
+    def admin(actor):
+        if actor != "admin":
+            raise HTTPException(403, "Administrator required")
+
+    @app.get("/discovery/sources")
+    def feed_sources(actor=Depends(authorized)):
+        admin(actor)
+        with sessions() as session:
+            result = []
+            for key, definition in SOURCES.items():
+                state = session.get(FeedState, key)
+                result.append({"id": key, **definition,
+                               "status": state.status if state else "never_collected",
+                               "checked_at": state.checked_at if state else None,
+                               "success_at": state.success_at if state else None,
+                               "next_at": state.next_at if state else 0,
+                               "error": state.error if state else None})
+            return {"enabled": os.getenv("STUDIO_FEEDS_ENABLED", "0") == "1",
+                    "sources": result, "automatic_research": False}
+
+    @app.post("/discovery/sources/{source}/collect")
+    def collect_feed(source: str, actor=Depends(authorized)):
+        admin(actor)
+        if source not in SOURCES:
+            raise HTTPException(404, "Unknown feed source")
+        if os.getenv("STUDIO_FEEDS_ENABLED", "0") != "1":
+            raise HTTPException(409, "Feed collection disabled")
+        try:
+            return collect(sessions, source, feed_client or FeedClient())
+        except FeedCoolingDown as exc:
+            raise HTTPException(409, str(exc)) from None
+        except FeedUnavailable:
+            raise HTTPException(502, "Feed unavailable or invalid; retry after cooldown") from None
+
+    @app.get("/discovery/entries")
+    def feed_entries(source: str | None = None, after_key: str | None = Query(None, pattern=r"^[a-f0-9]{64}$"),
+                     limit: int = Query(20, ge=1, le=100), actor=Depends(authorized)):
+        admin(actor)
+        if source is not None and source not in SOURCES:
+            raise HTTPException(404, "Unknown feed source")
+        with sessions() as session:
+            query = select(FeedEntry)
+            if source:
+                query = query.where(FeedEntry.source == source)
+            if after_key:
+                query = query.where(FeedEntry.key > after_key)
+            rows = list(session.scalars(query.order_by(FeedEntry.key).limit(limit + 1)))
+            more = len(rows) > limit
+            rows = rows[:limit]
+            return {"entries": [{"key": e.key, "source": e.source, "url": e.url,
+                                 "title": e.title, "published_at": e.published_at,
+                                 "discovered_at": e.discovered_at, "verified": False,
+                                 "provenance": "publisher_feed_metadata_only"} for e in rows],
+                    "next_after_key": rows[-1].key if more else None,
+                    "order": "stable_key", "research_started": False}
 
     return app
 

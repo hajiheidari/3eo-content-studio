@@ -113,6 +113,29 @@ class Delivery(Base):
     error: Mapped[str | None] = mapped_column(String(100))
 
 
+class FeedState(Base):
+    __tablename__ = "feed_states"
+    source: Mapped[str] = mapped_column(String(100), primary_key=True)
+    etag: Mapped[str | None] = mapped_column(String(500))
+    modified: Mapped[str | None] = mapped_column(String(500))
+    checked_at: Mapped[float | None] = mapped_column(Float)
+    success_at: Mapped[float | None] = mapped_column(Float)
+    next_at: Mapped[float] = mapped_column(Float, default=0)
+    owner: Mapped[str | None] = mapped_column(String(40))
+    status: Mapped[str | None] = mapped_column(String(20))
+    error: Mapped[str | None] = mapped_column(String(100))
+
+
+class FeedEntry(Base):
+    __tablename__ = "feed_entries"
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    source: Mapped[str] = mapped_column(ForeignKey("feed_states.source"))
+    url: Mapped[str] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(String(300))
+    published_at: Mapped[str | None] = mapped_column(String(100))
+    discovered_at: Mapped[float] = mapped_column(Float)
+
+
 def database(url: str):
     engine = create_engine(url)
     return engine, sessionmaker(engine, expire_on_commit=False)

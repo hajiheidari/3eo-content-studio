@@ -45,3 +45,12 @@ derived data, not an anonymization guarantee; hash samples must be protected wit
 DB. API responses omit the hash arrays and transcripts. Matching never follows source URLs or
 calls a model. Warnings are advisory and cannot bypass versioned approval/state guards. Legacy
 backfill is explicit, bounded and version-protected; no read silently writes profile data.
+
+
+Public-feed collection is separately opt-in and admin-only; gateway credentials cannot collect
+or read the inbox. Only the reviewed fixed feed URL is requested, with TLS verification and no
+redirects/environment proxy use. Feed entry URLs are constrained inert data and never fetched.
+UTF-8 XML has strict response/structure bounds and rejects DTD/entities. External title/date
+metadata remains unverified and cannot authorize research or publication. HTTP/parser error
+details and untrusted response bodies are not exposed. New source origins require review;
+public-feed metadata access does not grant permission to scrape or reuse full articles.

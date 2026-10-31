@@ -18,3 +18,9 @@ provider-side caching and usage outside this application affect invoices. No pri
 balance or free allowance is assumed. Choose the model and check its official current pricing
 before setting provider project spend controls and enabling a live acceptance test. No model
 is selected by default and no live usage budget has been approved in this chat.
+
+
+The optional feed inbox requires no API key or paid model. Explicit admin collection performs
+at most one request per source per hour after success, with a five-minute failure/crash cooldown.
+It stores only bounded metadata per entry. It is disabled by default and has no scheduler or
+retention job; network/storage/hosting use still needs monitoring before sustained operation.

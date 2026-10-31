@@ -98,3 +98,22 @@ or /similar continuation command to examine older records. Neither absent nor pr
 authorize automatic content decisions. No automatic record deletion, merging or report filtering
 was added. Derived profiles belong in the same private source backup; reindexing is possible
 from authorized source data but must not race unreviewed production changes.
+
+
+## Public-feed inbox
+Run migrations to head before use. Collection defaults off (`STUDIO_FEEDS_ENABLED=0`).
+The admin-only endpoints are documented in README. Enabling the flag does not start a schedule;
+only an explicit collection request contacts the fixed public feed. A duplicate/concurrent or
+cooling-down request returns 409. Failed/invalid upstream responses return a sanitized 502 and
+consume the five-minute cooldown. Successful checks wait one hour; HTTP 304 retains old rows.
+`GET /discovery/sources` distinguishes last check from last successful collection and reports a
+sanitized failure code. Do not interpret cached entries as fresh while the source is failing.
+
+A crashed collector remains blocked until its claim/cooldown expires; no automatic retry loop
+runs. A database failure can also leave the claim until cooldown, while the cache/row transaction
+rolls back. No reset/force endpoint is supplied. Disabling the flag stops new requests, not one
+already in flight. Inbox entries are first-seen metadata, unverified, and never included in daily
+research reports. There is no retention job yet: monitor growth before sustained operation.
+A local live-feed smoke attempt failed with a TLS WRONG_VERSION_NUMBER connection error;
+no TLS checks were weakened or proxy bypass workaround installed. Real collection acceptance
+must be repeated in the approved isolated runtime; the suite uses mocked HTTP.

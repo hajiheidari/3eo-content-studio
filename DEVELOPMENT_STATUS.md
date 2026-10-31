@@ -21,7 +21,7 @@ M2–M4 (producer, media, dashboard) remain unimplemented. This branch is a draf
 - Official YouTube metadata adapter, disabled by default: title/creator/date only, fixed Google
   endpoint, validated source ID, no redirects/media/transcripts, bounded uncompressed responses.
   One-hour cache and atomic daily request reservations. Manual links still work without a key.
-- Migrations 0001–0006. Existing source data and pending 0002 outbox messages survive upgrade;
+- Migrations 0001–0007. Existing source data and pending 0002 outbox messages survive upgrade;
   new keyboard/metadata fields remain nullable. Schema/model parity tested on both databases.
 - Optional OpenAI Responses adapter, disabled by default; explicit model/key/budget/cap gates,
   strict structured output, input/output/time/response bounds, refusal/incomplete handling,
@@ -36,8 +36,13 @@ M2–M4 (producer, media, dashboard) remain unimplemented. This branch is a draf
 - Paginated API status filters and Telegram saved/approved lists. Derived profiles are maintained
   with transcript/research writes; pending research revisions are not treated as fresh evidence.
 
+- Opt-in admin RSS/Atom metadata inbox with one reviewed official source, fixed request origin,
+  bounded hardened parsing, conditional caching, persistent cooldown/owner fencing and URL
+  deduplication. Separate tables preserve source/research states; no transcript/AI/approval
+  or report inclusion. General source configuration and article promotion are not implemented.
+
 ## Validation (2026-10-31)
-144 tests passed, none skipped, using the locked Python 3.12 environment and a temporary
+179 tests passed, none skipped, using the locked Python 3.12 environment and a temporary
 loopback-only PostgreSQL 16.2 test instance. That instance was stopped after testing. SQLite
 also passed. Ruff passed. The remaining warning is Starlette's httpx TestClient deprecation.
 
@@ -51,7 +56,7 @@ legacy backfill and paginated saved/approved lists on both databases. Migrations
 
 GitHub CI became green after the repository was made public and run 41235573994 was rerun:
 120 tests passed with PostgreSQL 17.11, Ruff and both migration upgrades. That baseline was
-commit b8e1597; check the PR for the current-head result. The original pre-run failure's exact
+commit b8e1597; the later e449aa9 run passed 144 tests. Check the PR for the current-head result. The original pre-run failure's exact
 account-level cause was not established. Live Telegram, YouTube and real AI remain unverified.
 AI transport, spend-approval configuration and all generation responses were mocked; no live
 model quality, latency, availability or invoice estimate is claimed.
@@ -60,9 +65,19 @@ model quality, latency, availability or invoice estimate is claimed.
 Do not mark M1 complete. Pending: approved model/budget selection and real isolated
 bot/metadata/AI acceptance tests; Instagram metadata permissions; semantic matching beyond
 lexical warnings;
-automatic discovery, quota-aware feeds and incremental caching. AI-generated facts still need
+scheduled discovery, additional reviewed feed sources, article selection/promotion and
+Telegram inbox controls. The first feed inbox and incremental cache are implemented. AI-generated facts still need
 founder verification. Current report placeholders for incomplete research are not real findings.
 
 Before production: current-head CI verification, delivery monitoring/alerts, operator reconciliation tools,
 retention/backup restore, rate limits and authentication hardening, production resource inventory
 and explicit deployment approval. No live integration credentials are needed for the mock suite.
+
+
+Feed validation adds synthetic RSS/Atom, URL/XML/transport bounds, cache/cooldown races,
+stale-owner fencing, admin authorization, error observability and inbox pagination. Both engines
+pass migration parity and concurrent claim/cache tests. A direct public-feed smoke attempt
+failed during TLS connection with WRONG_VERSION_NUMBER; no response was parsed or retained.
+Live RSS availability/format remains an acceptance gate. No new application dependency.
+Next code milestone: explicit human selection of a feed source into an authorized article
+research workflow, preserving attribution and evidence limits; then isolated live acceptance.
