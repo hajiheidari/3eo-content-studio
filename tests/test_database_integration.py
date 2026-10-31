@@ -1,0 +1,86 @@
+"""Migrate a fresh SQLite database and an explicitly configured disposable PostgreSQL schema."""
+
+import os
+import uuid
+from pathlib import Path
+
+import pytest
+from alembic import command
+from alembic.autogenerate import compare_metadata
+from alembic.config import Config
+from alembic.migration import MigrationContext
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, select
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import Session
+from sqlalchemy.schema import CreateSchema, DropSchema
+
+from studio.api import create_app
+from studio.storage import Base, Cursor, Delivery, Item
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture(params=["sqlite", "postgresql"])
+def migrated_url(request, tmp_path, monkeypatch):
+    admin_engine, schema = None, None
+    if request.param == "sqlite":
+        url = f"sqlite:///{tmp_path}/migrated.db"
+    else:
+        configured = os.getenv("STUDIO_TEST_POSTGRES_URL")
+        if not configured:
+            pytest.skip("Disposable PostgreSQL test service not configured")
+        parsed = make_url(configured)
+        if parsed.database != "studio_test" or parsed.host not in {"localhost", "127.0.0.1", "::1"}:
+            pytest.fail("PostgreSQL tests require a loopback studio_test database")
+        admin_engine = create_engine(parsed)
+        schema = "studio_test_" + uuid.uuid4().hex
+        with admin_engine.begin() as connection:
+            connection.execute(CreateSchema(schema))
+        url = parsed.update_query_dict({"options": f"-csearch_path={schema}"}).render_as_string(
+            hide_password=False)
+    monkeypatch.setenv("DATABASE_URL", url)
+    config = Config(str(ROOT / "alembic.ini"))
+    config.set_main_option("script_location", str(ROOT / "migrations"))
+    try:
+        command.upgrade(config, "0001")
+        engine = create_engine(url)
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                "INSERT INTO source_items (platform, content_id, url, status) "
+                "VALUES ('youtube', 'abcdefghijk', 'https://youtu.be/abcdefghijk', 'DISCOVERED')"
+            )
+        engine.dispose()
+        command.upgrade(config, "head")
+        command.upgrade(config, "head")
+        yield url
+    finally:
+        if admin_engine:
+            with admin_engine.begin() as connection:
+                connection.execute(DropSchema(schema, cascade=True))
+            admin_engine.dispose()
+
+
+def test_migration_preserves_data_matches_models_and_serves_api(migrated_url):
+    app = create_app(migrated_url, token="migration-test")
+    try:
+        with app.state.engine.connect() as connection:
+            assert compare_metadata(MigrationContext.configure(connection), Base.metadata) == []
+        with Session(app.state.engine) as session:
+            assert session.get(Item, 1).version == 1
+            session.add(Cursor(name="telegram", offset=2**40))
+            session.add(Delivery(key="migration", chat_id=2**40, text="آزمون"))
+            session.commit()
+        with TestClient(app, headers={"Authorization": "Bearer migration-test"}) as client:
+            assert client.get("/health").status_code == 200
+            assert client.get("/items/1").json()["status"] == "DISCOVERED"
+            response = client.post("/items/1/transition", json={"status": "REJECTED"},
+                                   headers={"Idempotency-Key": "migration-command"})
+            assert response.status_code == 200
+            assert client.post("/items/1/transition", json={"status": "REJECTED"},
+                               headers={"Idempotency-Key": "migration-command"}).status_code == 200
+            assert client.get("/operations/telegram").json()["offset"] == 2**40
+        with Session(app.state.engine) as session:
+            assert len(list(session.scalars(select(Delivery)))) == 1
+    finally:
+        app.state.engine.dispose()

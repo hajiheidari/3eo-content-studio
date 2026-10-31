@@ -1,35 +1,60 @@
+import hashlib
 import hmac
 import json
 import os
+import re
 from datetime import datetime, timezone
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm.exc import StaleDataError
 
 from .domain import TRANSITIONS, normalize_url, rank, report_day
 from .research import Research, UnconfiguredProvider
-from .storage import Audit, Item, Report, database
+from .storage import Audit, Cursor, Delivery, Item, Receipt, Report, database
 
 
-def create_app(database_url=None, token=None, provider=None):
+def serialize(item):
+    return {
+        "id": item.id, "url": item.url, "author": item.author,
+        "published_at": item.published_at, "status": item.status, "score": item.score,
+        "research": json.loads(item.research) if item.research else None,
+    }
+
+
+def create_app(database_url=None, token=None, provider=None, telegram_token=None,
+               allowed_users=None):
     engine, sessions = database(database_url or os.getenv("DATABASE_URL", "sqlite:///./studio.db"))
     secret = token or os.getenv("STUDIO_ADMIN_TOKEN")
+    gateway_secret = telegram_token or os.getenv("STUDIO_TELEGRAM_API_TOKEN")
+    if secret and gateway_secret and hmac.compare_digest(secret, gateway_secret):
+        raise ValueError("Admin and Telegram gateway tokens must be different")
+    users = allowed_users if allowed_users is not None else {
+        int(x) for x in os.getenv("STUDIO_TELEGRAM_USERS", "").split(",") if x.strip()
+    }
     provider = provider or UnconfiguredProvider()
     app = FastAPI(title="3EO Content Studio", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.engine = engine
     auth = HTTPBearer(auto_error=False)
 
-    def authorized(credentials: HTTPAuthorizationCredentials | None = Depends(auth)):
-        if (
-            not secret
-            or not credentials
-            or not hmac.compare_digest(credentials.credentials, secret)
-        ):
-            raise HTTPException(401, "Unauthorized")
-        return "admin"
+    def authorized(request: Request,
+                   credentials: HTTPAuthorizationCredentials | None = Depends(auth)):
+        supplied = credentials.credentials if credentials else ""
+        if secret and supplied and hmac.compare_digest(supplied, secret):
+            return "admin"
+        if gateway_secret and supplied and hmac.compare_digest(supplied, gateway_secret):
+            user = request.headers.get("X-Studio-Telegram-User", "")
+            if re.fullmatch(r"[1-9][0-9]{0,15}", user) and int(user) in users:
+                return f"telegram:{int(user)}"
+        raise HTTPException(401, "Unauthorized")
+
+    @app.exception_handler(StaleDataError)
+    def stale_state(request, exc):
+        return JSONResponse(status_code=409, content={"detail": "Item changed; reload and retry"})
 
     def get_item(session, item_id):
         item = session.get(Item, item_id)
@@ -37,101 +62,139 @@ def create_app(database_url=None, token=None, provider=None):
             raise HTTPException(404, "Item not found")
         return item
 
+    def mutate(request, actor, body, action):
+        raw_key = request.headers.get("Idempotency-Key")
+        key = None
+        if raw_key:
+            if not re.fullmatch(r"[A-Za-z0-9:_-]{1,100}", raw_key):
+                raise HTTPException(422, "Invalid idempotency key")
+            key = hashlib.sha256(f"{actor}:{raw_key}".encode()).hexdigest()
+        fingerprint = hashlib.sha256(json.dumps(
+            [request.method, request.url.path, body], sort_keys=True, ensure_ascii=False,
+        ).encode()).hexdigest()
+
+        def replay(session):
+            receipt = session.get(Receipt, key) if key else None
+            if receipt:
+                if receipt.fingerprint != fingerprint:
+                    raise HTTPException(409, "Idempotency key already used for another request")
+                return json.loads(receipt.payload)
+            return None
+
+        with sessions() as session:
+            cached = replay(session)
+            if cached is not None:
+                return cached
+            try:
+                result = action(session)
+                if key:
+                    session.add(Receipt(key=key, fingerprint=fingerprint,
+                                        payload=json.dumps(result, ensure_ascii=False)))
+                session.commit()
+                return result
+            except (IntegrityError, StaleDataError):
+                session.rollback()
+                cached = replay(session)
+                if cached is not None:
+                    return cached
+                raise HTTPException(409, "Concurrent change; reload and retry") from None
+
     @app.get("/health")
     def health():
         with sessions() as session:
             session.execute(select(Report).limit(1)).all()
         return {"status": "ok", "publication_enabled": False}
 
-    @app.post("/items", dependencies=[Depends(authorized)])
-    def submit(body: Submission):
+    @app.get("/operations/telegram")
+    def telegram_status(actor=Depends(authorized)):
+        if actor != "admin":
+            raise HTTPException(403, "Administrator required")
+        with sessions() as session:
+            cursor = session.get(Cursor, "telegram")
+            deliveries = [{"key": d.key, "status": d.status, "attempts": d.attempts,
+                           "message_id": d.message_id, "error": d.error}
+                          for d in session.scalars(select(Delivery).order_by(
+                              Delivery.available_at.desc(), Delivery.key).limit(100))]
+            return {"offset": cursor.offset if cursor else 0, "deliveries": deliveries}
+
+    @app.post("/items")
+    def submit(body: Submission, request: Request, actor=Depends(authorized)):
         try:
             platform, content_id, url = normalize_url(body.url)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
-        with sessions() as session:
-            item = Item(platform=platform, content_id=content_id, url=url)
-            session.add(item)
-            try:
-                session.commit()
-            except IntegrityError:
-                session.rollback()
-                item = session.scalar(
-                    select(Item).where(Item.platform == platform, Item.content_id == content_id)
-                )
-            return {
-                "id": item.id,
-                "url": item.url,
-                "status": item.status,
-                "next": "Supply an authorized transcript; metadata is not yet retrieved",
-            }
+
+        def action(session):
+            item = session.scalar(select(Item).where(
+                Item.platform == platform, Item.content_id == content_id))
+            if item is None:
+                item = Item(platform=platform, content_id=content_id, url=url)
+                session.add(item)
+                session.flush()
+            return {"id": item.id, "url": item.url, "status": item.status,
+                    "next": "Supply an authorized transcript; metadata is user supplied"}
+        return mutate(request, actor, body.model_dump(), action)
 
     @app.get("/items", dependencies=[Depends(authorized)])
     def items():
         with sessions() as session:
-            return [
-                {
-                    "id": i.id,
-                    "url": i.url,
-                    "author": i.author,
-                    "published_at": i.published_at,
-                    "status": i.status,
-                    "score": i.score,
-                    "research": json.loads(i.research) if i.research else None,
-                }
-                for i in session.scalars(select(Item).order_by(Item.id.desc()).limit(100))
-            ]
+            return [serialize(i) for i in session.scalars(
+                select(Item).order_by(Item.id.desc()).limit(100))]
 
-    @app.put("/items/{item_id}/transcript", dependencies=[Depends(authorized)])
-    def transcript(item_id: int, body: Transcript):
+    @app.get("/items/{item_id}", dependencies=[Depends(authorized)])
+    def item_detail(item_id: int):
         with sessions() as session:
+            return serialize(get_item(session, item_id))
+
+    @app.put("/items/{item_id}/transcript")
+    def transcript(item_id: int, body: Transcript, request: Request, actor=Depends(authorized)):
+        def action(session):
             item = get_item(session, item_id)
             if item.status not in {"DISCOVERED", "MORE_RESEARCH"}:
                 raise HTTPException(409, "Transcript is locked after research")
             item.transcript, item.transcript_provenance = body.text, body.provenance
             item.author, item.published_at = body.author, body.published_at
-            session.commit()
-        return {"status": "stored", "metadata_source": "user supplied"}
+            return {"status": "stored", "metadata_source": "user supplied"}
+        return mutate(request, actor, body.model_dump(), action)
 
-    @app.post("/items/{item_id}/research", dependencies=[Depends(authorized)])
-    def research(item_id: int, body: Research | None = None):
-        with sessions() as session:
+    @app.post("/items/{item_id}/research")
+    def research(item_id: int, request: Request, body: Research | None = None,
+                 actor=Depends(authorized)):
+        def action(session):
             item = get_item(session, item_id)
             if not item.transcript:
-                raise HTTPException(
-                    409, "Authorized transcript required; content has not been analyzed"
-                )
+                raise HTTPException(409, "Authorized transcript required; content has not been analyzed")
             if item.status not in {"DISCOVERED", "MORE_RESEARCH"}:
                 raise HTTPException(409, "Research not allowed in this state")
             try:
-                result = Research.model_validate(
-                    body or provider.analyze(item.transcript, item.url)
-                )
-            except RuntimeError as exc:
-                raise HTTPException(503, str(exc)) from exc
+                result = Research.model_validate(body or provider.analyze(item.transcript, item.url))
+            except ValidationError:
+                raise HTTPException(502, "Research provider returned invalid output") from None
+            except (RuntimeError, TimeoutError, ConnectionError):
+                # Provider messages can contain credentials or source text; never return them.
+                raise HTTPException(503, "Research provider unavailable; submit reviewed research") from None
             item.research = result.model_dump_json()
             item.score = rank(result.criteria)
-            session.add(
-                Audit(item_id=item.id, actor="admin", previous=item.status, current="RESEARCHED")
-            )
+            session.add(Audit(item_id=item.id, actor=actor,
+                              previous=item.status, current="RESEARCHED"))
             item.status = "RESEARCHED"
-            session.commit()
             return {"status": item.status, "score": item.score}
+        return mutate(request, actor, body.model_dump() if body else None, action)
 
     @app.post("/items/{item_id}/transition")
-    def transition(item_id: int, body: Transition, actor=Depends(authorized)):
-        # Producer states are reserved until the producer and script review exist.
+    def transition(item_id: int, body: Transition, request: Request, actor=Depends(authorized)):
         if body.status not in {"IDEA_APPROVED", "REJECTED", "SAVED", "MORE_RESEARCH"}:
             raise HTTPException(422, "Unsupported M1 action")
-        with sessions() as session:
+
+        def action(session):
             item = get_item(session, item_id)
             previous = item.status
             if body.status not in TRANSITIONS.get(previous, set()):
                 raise HTTPException(409, "Invalid approval transition")
             item.status = body.status
             session.add(Audit(item_id=item.id, actor=actor, previous=previous, current=body.status))
-            session.commit()
-        return {"status": body.status}
+            return {"status": body.status}
+        return mutate(request, actor, body.model_dump(), action)
 
     @app.post("/reports/prepare", dependencies=[Depends(authorized)])
     def prepare_report():
@@ -142,32 +205,16 @@ def create_app(database_url=None, token=None, provider=None):
             existing = session.get(Report, day)
             if existing:
                 return {"day": day, "ideas": json.loads(existing.payload), "duplicate": True}
-            ideas = [
-                {
-                    "id": i.id,
-                    "url": i.url,
-                    "score": i.score,
-                    "author": i.author,
-                    "published_at": i.published_at,
-                    "research": json.loads(i.research),
-                }
-                for i in session.scalars(
-                    select(Item)
-                    .where(Item.status == "RESEARCHED")
-                    .order_by(Item.score.desc(), Item.id)
-                    .limit(5)
-                )
-            ]
+            ideas = [serialize(i) for i in session.scalars(
+                select(Item).where(Item.status == "RESEARCHED")
+                .order_by(Item.score.desc(), Item.id).limit(5))]
             session.add(Report(day=day, payload=json.dumps(ideas, ensure_ascii=False)))
             try:
                 session.commit()
             except IntegrityError:
                 session.rollback()
-                return {
-                    "day": day,
-                    "ideas": json.loads(session.get(Report, day).payload),
-                    "duplicate": True,
-                }
+                return {"day": day, "ideas": json.loads(session.get(Report, day).payload),
+                        "duplicate": True}
             return {"day": day, "ideas": ideas, "duplicate": False}
 
     return app
