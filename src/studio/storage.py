@@ -30,6 +30,7 @@ class Item(Base):
     transcript: Mapped[str | None] = mapped_column(Text)
     transcript_provenance: Mapped[str | None] = mapped_column(Text)
     research: Mapped[str | None] = mapped_column(Text)
+    source_metadata: Mapped[str | None] = mapped_column(Text)
     score: Mapped[float | None] = mapped_column(Float)
     version: Mapped[int] = mapped_column(default=1, server_default="1")
     __mapper_args__ = {"version_id_col": version}
@@ -54,6 +55,12 @@ class Report(Base):
     status: Mapped[str] = mapped_column(String(20), default="prepared")
 
 
+class Usage(Base):
+    __tablename__ = "api_usage"
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    count: Mapped[int] = mapped_column(default=0)
+
+
 class Receipt(Base):
     """Mutation result, committed in the same transaction as the mutation."""
 
@@ -76,6 +83,7 @@ class Delivery(Base):
     key: Mapped[str] = mapped_column(String(160), primary_key=True)
     chat_id: Mapped[int] = mapped_column(BigInteger)
     text: Mapped[str] = mapped_column(Text)
+    reply_markup: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), default="pending")
     attempts: Mapped[int] = mapped_column(default=0)
     available_at: Mapped[float] = mapped_column(Float, default=0)

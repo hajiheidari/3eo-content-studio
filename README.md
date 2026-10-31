@@ -2,7 +2,8 @@
 
 Private, approval-driven Persian SEO research and production system. The Scout manual path,
 opt-in Telegram polling and durable daily-report outbox are implemented. M1 is **not complete**:
-metadata retrieval, an AI network adapter, discovery and inline buttons remain pending.
+an AI network adapter, automatic discovery and live acceptance tests remain pending.
+Optional official YouTube metadata and versioned Persian inline decisions are implemented.
 Video production and the dashboard are not implemented. See [status](DEVELOPMENT_STATUS.md)
 and [original brief](REQUIREMENTS.md).
 
@@ -27,12 +28,14 @@ Use `Authorization: Bearer <admin token>`. No external credentials are needed.
 
 1. `POST /items` with `{"url":"https://youtu.be/abcdefghijk"}`.
 2. `PUT /items/{id}/transcript` with `text`, `provenance`, optional `author`/`published_at`.
-   Supply only a transcript you are authorized to use. Metadata is explicitly user supplied.
+   Supply only a transcript you are authorized to use. Metadata can be entered manually or
+   retrieved through the optional official YouTube adapter described below.
 3. `POST /items/{id}/research` with reviewed research JSON, or without a body to use an injected
    provider. The default provider is unavailable (503); malformed provider output returns 502
    without changing the item. Provider error messages are not exposed.
 4. `GET /items/{id}` to review the result. `POST /items/{id}/transition` with `status` equal to
-   IDEA_APPROVED, REJECTED, SAVED or MORE_RESEARCH. No producer/publication states are accepted.
+   IDEA_APPROVED, REJECTED, SAVED or MORE_RESEARCH. No producer/publication states are accepted. `expected_version` can bind a decision to the
+   reviewed item version; all inline buttons supply it and reject outdated decisions.
 
 Reviewed research example (scores are the reviewer's assessments, not source engagement metrics):
 
@@ -83,11 +86,39 @@ Private-chat commands:
 - `/transcript ID`, newline, authorization/provenance, newline, transcript text.
 - `/review ID`, newline, reviewed research JSON in the format above.
 - `/analyze ID` uses a configured provider; default is unavailable.
+- `/metadata ID` requests official YouTube metadata if the optional adapter is configured.
 - `/idea ID` shows the research, evidence limitations and available decisions.
 - `/ideas`, `/approve ID`, `/reject ID`, `/save ID`, `/research ID`, `/help`.
 
+Research detail and daily reports include Persian inline buttons for the actions permitted by
+the current state. Buttons contain the item version; a button from an earlier research revision
+is rejected with instructions to reopen the idea. Old snapshots without a version remain
+readable but do not generate new buttons. Private callback sender/chat checks match the command
+checks, and callback popups are acknowledged after the reply/offset commit.
+
 Every mutation records the authenticated Telegram user rather than a generic admin actor.
 The gateway credential is trusted to assert only allowlisted users; do not share it with clients.
+
+## Optional YouTube metadata
+Disabled by default: `STUDIO_METADATA_PROVIDER=none`. To intentionally enable it, set
+`STUDIO_METADATA_PROVIDER=youtube` and supply `STUDIO_YOUTUBE_API_KEY` securely using a dedicated
+project/key. No API key was used during development; all adapter tests mock the network.
+
+`POST /items/{id}/metadata` (or `/metadata ID`) retrieves only the video's title, creator and
+publication date from the official fixed Google endpoint. It never downloads media or obtains
+a transcript. Instagram continues to use manual metadata. The default manual workflow still
+works without any YouTube key.
+
+Successful metadata is cached for one hour. The default cap is 50 requests per Tehran calendar
+day, configurable with `STUDIO_METADATA_DAILY_LIMIT` (1–1000). Reservations are committed before
+HTTP requests; timeouts and failed responses consume a reservation. Cached hits consume none.
+The application cap counts requests, not Google's complete project quota; other applications
+using the same key are outside its accounting. No automatic retries or quota-exhaustion bypass.
+
+The adapter refuses redirects, compressed/oversized responses, mismatched source IDs and invalid
+fields. Once an idea is researched, expired metadata cannot be refreshed until MORE_RESEARCH.
+Manual author/date overrides are preserved separately from the original API metadata. Requests
+are explicit; submitting a link alone never starts a metadata call.
 
 ## Reports and delivery
 `POST /reports/prepare` alone sends nothing. The worker checks the Tehran date on each tick and,

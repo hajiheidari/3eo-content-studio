@@ -123,7 +123,7 @@ def test_telegram_authorization(client):
         {
             "message": {
                 "from": {"id": 123},
-                "chat": {"type": "private"},
+                "chat": {"type": "private", "id": 123},
                 "text": "https://youtu.be/abcdefghijk",
             }
         }

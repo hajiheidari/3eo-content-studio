@@ -51,6 +51,14 @@ def migrated_url(request, tmp_path, monkeypatch):
                 "VALUES ('youtube', 'abcdefghijk', 'https://youtu.be/abcdefghijk', 'DISCOVERED')"
             )
         engine.dispose()
+        command.upgrade(config, "0002")
+        engine = create_engine(url)
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                "INSERT INTO telegram_outbox (key, chat_id, text, status, attempts, available_at) "
+                "VALUES ('legacy', 123, 'legacy message', 'pending', 0, 0)"
+            )
+        engine.dispose()
         command.upgrade(config, "head")
         command.upgrade(config, "head")
         yield url
@@ -68,6 +76,7 @@ def test_migration_preserves_data_matches_models_and_serves_api(migrated_url):
             assert compare_metadata(MigrationContext.configure(connection), Base.metadata) == []
         with Session(app.state.engine) as session:
             assert session.get(Item, 1).version == 1
+            assert session.get(Delivery, "legacy").reply_markup is None
             session.add(Cursor(name="telegram", offset=2**40))
             session.add(Delivery(key="migration", chat_id=2**40, text="آزمون"))
             session.commit()
@@ -81,6 +90,26 @@ def test_migration_preserves_data_matches_models_and_serves_api(migrated_url):
                                headers={"Idempotency-Key": "migration-command"}).status_code == 200
             assert client.get("/operations/telegram").json()["offset"] == 2**40
         with Session(app.state.engine) as session:
-            assert len(list(session.scalars(select(Delivery)))) == 1
+            assert len(list(session.scalars(select(Delivery)))) == 2
     finally:
         app.state.engine.dispose()
+
+
+def test_quota_limit_is_atomic_on_migrated_database(migrated_url):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from sqlalchemy.orm import sessionmaker
+
+    from studio.metadata import reserve_quota
+    from studio.storage import Usage
+
+    engine = create_engine(migrated_url)
+    try:
+        sessions = sessionmaker(engine)
+        with ThreadPoolExecutor(max_workers=5) as pool:
+            results = list(pool.map(lambda _: reserve_quota(sessions, "2026-10-31", 3), range(10)))
+        assert sum(results) == 3
+        with sessions() as session:
+            assert session.get(Usage, "youtube:2026-10-31").count == 3
+    finally:
+        engine.dispose()

@@ -4,8 +4,11 @@ admin or dedicated gateway token and fail closed when unset. Bind to loopback. A
 per-user dashboard RBAC, rate limits and production authentication remain pending.
 Only exact HTTPS YouTube/Instagram hosts and recognized paths are accepted. No submitted
 URL is fetched, so redirects and DNS cannot trigger SSRF. Future fetch adapters must validate
-resolved addresses, every redirect, time/byte limits and content types. Metadata is explicitly
-user supplied until an adapter is implemented. No scraping, public media serving, upload,
+resolved addresses, every redirect, time/byte limits and content types. Metadata remains manual unless the dedicated YouTube adapter is explicitly configured.
+That adapter accepts only validated YouTube IDs, calls one fixed official Google endpoint,
+refuses redirects/compressed responses, caps time/bytes and reserves daily requests atomically.
+No API key is required for the manual path. Never log metadata HTTP exception URLs (keys are
+query parameters); only sanitized failures are returned. No scraping, public media serving, upload,
 publication or voice generation endpoints exist. Telegram handler permits only configured
 users in private chats. The API does not start a bot; polling/sending requires explicitly
 configured opt-in foreground worker startup. A separate gateway token can assert allowlisted
@@ -14,3 +17,8 @@ Secrets and HTTP exception URLs are not logged by the worker. Research requires 
 limitations, but schema validation cannot establish truth; founder fact checking remains required.
 Protect DB and token locally; never commit environment files. Dependency lock included;
 container scanning and full security audit remain pending.
+
+Inline callback actions require the approved sender in their exact private chat and include
+an expected item version. Replaying the same update returns its existing mutation receipt;
+using an old button for a changed idea fails with 409. Old unversioned report snapshots do not
+create new keyboards. Callback acknowledgements never authorize or repeat mutations.

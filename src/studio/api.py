@@ -4,6 +4,7 @@ import json
 import os
 import re
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -14,20 +15,25 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import StaleDataError
 
 from .domain import TRANSITIONS, normalize_url, rank, report_day
+from .metadata import SourceMetadata, UnconfiguredMetadata, YouTubeMetadata, reserve_quota
 from .research import Research, UnconfiguredProvider
 from .storage import Audit, Cursor, Delivery, Item, Receipt, Report, database
 
 
 def serialize(item):
+    metadata = json.loads(item.source_metadata) if item.source_metadata else None
     return {
-        "id": item.id, "url": item.url, "author": item.author,
-        "published_at": item.published_at, "status": item.status, "score": item.score,
+        "id": item.id, "url": item.url,
+        "author": item.author or (metadata or {}).get("author"),
+        "published_at": item.published_at or (metadata or {}).get("published_at"),
+        "status": item.status, "score": item.score, "metadata": metadata,
+        "version": item.version,
         "research": json.loads(item.research) if item.research else None,
     }
 
 
 def create_app(database_url=None, token=None, provider=None, telegram_token=None,
-               allowed_users=None):
+               allowed_users=None, metadata_provider=None, metadata_daily_limit=None):
     engine, sessions = database(database_url or os.getenv("DATABASE_URL", "sqlite:///./studio.db"))
     secret = token or os.getenv("STUDIO_ADMIN_TOKEN")
     gateway_secret = telegram_token or os.getenv("STUDIO_TELEGRAM_API_TOKEN")
@@ -37,6 +43,16 @@ def create_app(database_url=None, token=None, provider=None, telegram_token=None
         int(x) for x in os.getenv("STUDIO_TELEGRAM_USERS", "").split(",") if x.strip()
     }
     provider = provider or UnconfiguredProvider()
+    if metadata_provider is None:
+        selected = os.getenv("STUDIO_METADATA_PROVIDER", "none")
+        if selected not in {"none", "youtube"}:
+            raise ValueError("Unsupported metadata provider")
+        metadata_provider = (YouTubeMetadata(os.getenv("STUDIO_YOUTUBE_API_KEY"))
+                             if selected == "youtube" else UnconfiguredMetadata())
+    daily_limit = (metadata_daily_limit if metadata_daily_limit is not None
+                   else int(os.getenv("STUDIO_METADATA_DAILY_LIMIT", "50")))
+    if not 1 <= daily_limit <= 1000:
+        raise ValueError("Metadata daily limit must be between 1 and 1000")
     app = FastAPI(title="3EO Content Studio", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.engine = engine
     auth = HTTPBearer(auto_error=False)
@@ -153,9 +169,42 @@ def create_app(database_url=None, token=None, provider=None, telegram_token=None
             if item.status not in {"DISCOVERED", "MORE_RESEARCH"}:
                 raise HTTPException(409, "Transcript is locked after research")
             item.transcript, item.transcript_provenance = body.text, body.provenance
-            item.author, item.published_at = body.author, body.published_at
+            if "author" in body.model_fields_set:
+                item.author = body.author
+            if "published_at" in body.model_fields_set:
+                item.published_at = body.published_at
             return {"status": "stored", "metadata_source": "user supplied"}
-        return mutate(request, actor, body.model_dump(), action)
+        return mutate(request, actor, body.model_dump(exclude_unset=True), action)
+
+    @app.post("/items/{item_id}/metadata")
+    def fetch_metadata(item_id: int, request: Request, actor=Depends(authorized)):
+        def action(session):
+            item = get_item(session, item_id)
+            now = datetime.now(timezone.utc)
+            cached = json.loads(item.source_metadata) if item.source_metadata else None
+            if cached and 0 <= now.timestamp() - cached["fetched_at"] < 3600:
+                return {"metadata": cached, "cached": True}
+            if item.status not in {"DISCOVERED", "MORE_RESEARCH"}:
+                raise HTTPException(409, "Metadata is locked after research")
+            if item.platform != "youtube":
+                raise HTTPException(422, "Instagram metadata requires manual entry")
+            if isinstance(metadata_provider, UnconfiguredMetadata):
+                raise HTTPException(503, "Metadata provider disabled; supply metadata manually")
+            day = now.astimezone(ZoneInfo("Asia/Tehran")).date().isoformat()
+            if not reserve_quota(sessions, day, daily_limit):
+                raise HTTPException(429, "Daily metadata request limit reached")
+            try:
+                result = SourceMetadata.model_validate(metadata_provider.fetch(item.url))
+                if result.content_id != item.content_id:
+                    raise ValueError("Metadata source mismatch")
+            except ValueError:
+                raise HTTPException(502, "Metadata provider returned invalid output") from None
+            except (RuntimeError, TimeoutError, ConnectionError):
+                raise HTTPException(503, "Metadata service unavailable; use manual entry") from None
+            data = result.model_dump(mode="json") | {"fetched_at": now.timestamp()}
+            item.source_metadata = json.dumps(data, ensure_ascii=False)
+            return {"metadata": data, "cached": False}
+        return mutate(request, actor, None, action)
 
     @app.post("/items/{item_id}/research")
     def research(item_id: int, request: Request, body: Research | None = None,
@@ -189,6 +238,8 @@ def create_app(database_url=None, token=None, provider=None, telegram_token=None
         def action(session):
             item = get_item(session, item_id)
             previous = item.status
+            if body.expected_version is not None and body.expected_version != item.version:
+                raise HTTPException(409, "Item changed since this decision was shown")
             if body.status not in TRANSITIONS.get(previous, set()):
                 raise HTTPException(409, "Invalid approval transition")
             item.status = body.status
@@ -233,3 +284,4 @@ class Transcript(BaseModel):
 
 class Transition(BaseModel):
     status: str
+    expected_version: int | None = Field(default=None, gt=0)

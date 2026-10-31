@@ -1,51 +1,50 @@
 # Implementation status
 
 ## Scope and deployment
-M0 architecture, costs and isolation boundaries are documented. Production inspection has not
-occurred; development-machine resources are not evidence about the Ubuntu production server.
-No production, Espadna Sim, 08:00 schedule, reverse proxy or external bot was modified.
-No paid calls or publication occurred. M2–M4 (producer, media, dashboard) are unimplemented.
+M0 architecture, costs and isolation boundaries are documented; production inspection is still
+pending. No production, Espadna Sim, 08:00 schedule, reverse proxy or external bot was modified.
+No paid calls, live metadata requests, publication, model downloads or live AI calls occurred.
+M2–M4 (producer, media, dashboard) remain unimplemented. This branch is a draft PR; no merge.
 
-## M1 progress
-The original foundation is extended with:
-
-- Safe AI failure handling: invalid provider output returns 502; unavailable providers return
-  sanitized 503; no partial research or audit is committed. Manual bad input remains 422.
-- Telegram manual transcript/reviewed-research submission, research detail and approval commands.
-- Separate gateway credential, approved-user attribution and admin-only delivery status.
-- Atomic mutation receipts for replay after API commit but before polling-offset commit.
-- Optimistic item version checks so concurrent changes cannot overwrite an approval.
-- Opt-in official Telegram HTTP adapter, persistent polling offset, a database worker lease,
-  Tehran-date scheduling, stable report/outbox keys, per-message delivery receipts, bounded
-  retries/backoff and shared send cooldown. No background process starts implicitly.
-- Conservative uncertain-send handling: do not automatically resend a possible successful send.
-- Migration 0002 and integration tests that upgrade existing 0001 data to head twice and check
-  schema/model parity. CI includes a disposable PostgreSQL service and its integration test.
-
-Existing URL normalization, exact deduplication, authorized transcript/provenance, research
-validation/ranking, approval guards and audit persistence remain in place. Metadata is user
-supplied. Added report fields use explicit incomplete placeholders for backward compatibility;
-these placeholders do not constitute completed research.
+## M1 implemented
+- Authenticated manual link/transcript/reviewed Persian research path, weighted ranking,
+  guarded approvals and persistent audit identity. Missing providers fail closed.
+- Sanitized AI errors with no partial writes; mutation receipts and optimistic versions prevent
+  replayed or conflicting writes. User-supplied author/date remain distinct from API metadata.
+- Separate trusted Telegram gateway credential and exact allowlisted private-chat checks.
+- Manual transcript/research commands, full idea review, versioned Persian inline decisions,
+  callback validation and post-commit popup acknowledgement. Old buttons cannot approve a new
+  revision. Unversioned old report snapshots do not create new buttons.
+- Opt-in Telegram transport, persistent polling offsets, a database worker lease, Tehran-date
+  scheduling, stable outbox keys, confirmed-message receipts and bounded retries/cooldown.
+  Ambiguous sends are held as uncertain; nothing starts implicitly.
+- Official YouTube metadata adapter, disabled by default: title/creator/date only, fixed Google
+  endpoint, validated source ID, no redirects/media/transcripts, bounded uncompressed responses.
+  One-hour cache and atomic daily request reservations. Manual links still work without a key.
+- Migrations 0001–0004. Existing source data and pending 0002 outbox messages survive upgrade;
+  new keyboard/metadata fields remain nullable. Schema/model parity tested on both databases.
 
 ## Validation (2026-10-31)
-Local Python 3.12 with the committed dependency lock: 44 tests passed, 1 PostgreSQL test skipped;
-ruff passed. SQLite upgrade from 0001 with existing data, repeated upgrade to head, schema parity
-and health are covered. Mocked Telegram transport and crash/replay scenarios pass. Remaining
-warning: Starlette httpx TestClient deprecation.
+82 tests passed, none skipped, using the locked Python 3.12 environment and a temporary
+loopback-only PostgreSQL 16.2 test instance. That instance was stopped after testing. SQLite
+also passed. Ruff passed. The remaining warning is Starlette's httpx TestClient deprecation.
 
-PostgreSQL is not installed in this local review environment; its real result must be checked
-in CI. The original remote run 41211744795 failed before any visible job steps (runner_id 0).
-Job logs were unavailable through the connector and the browser was not signed into the private
-repository. Root cause is unconfirmed; do not claim it was fixed or that CI is green without
-inspecting the new run. No live Telegram or external AI/metadata integration was exercised.
+Coverage includes manual Telegram flow, actor identity, old/forged callback rejection, replay
+and crash windows, delivery failures/cooldown, recipient removal, message chunking/keyboards,
+metadata parsing/redirect/size/timeout protection, caching, preserved manual overrides, and
+concurrent quota reservations. Migrations run from 0001 with existing source data, through
+0002 with a pending outbox row, to head twice, then check model parity and API health.
 
-## Remaining M1 work
-Do not mark M1 complete. Pending: verified metadata adapters; configured AI network provider
-with budget/timeout tests; near-duplicate detection; discovery, quotas and caching; Telegram
-inline buttons/callbacks and friendlier research entry; live isolated bot acceptance test;
-confirmed PostgreSQL/CI results. Delivery monitoring/alerting, retention, tested operator
-reconciliation, production rate limits and authentication hardening remain before deployment.
+GitHub-hosted runs still fail before visible job steps; logs are unavailable via the connector.
+Root cause remains unconfirmed. Local PostgreSQL success is not a green GitHub CI result.
+PostgreSQL 17 on the CI service, live Telegram, live YouTube and real AI remain unverified.
 
-Next gate: review this PR and CI, complete an isolated dedicated-bot acceptance test using
-secure environment configuration, then implement the metadata/provider adapters. No keys are
-needed for the current mock tests. Never reuse Espadna Sim credentials or deploy from this PR.
+## Remaining work
+Do not mark M1 complete. Pending: configured AI network provider and cost/timeout controls;
+real isolated bot/metadata acceptance tests; Instagram metadata permissions; near-duplicates;
+automatic discovery, quota-aware feeds and incremental caching. AI-generated facts still need
+founder verification. Current report placeholders for incomplete research are not real findings.
+
+Before production: CI diagnosis, delivery monitoring/alerts, operator reconciliation tools,
+retention/backup restore, rate limits and authentication hardening, production resource inventory
+and explicit deployment approval. No live integration credentials are needed for the mock suite.

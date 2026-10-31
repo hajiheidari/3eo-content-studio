@@ -10,7 +10,9 @@ The opt-in worker holds a renewable-per-tick 10-minute database lease, preventin
 worker from polling concurrently. Each tick is bounded by batches of five updates/sends and
 30-second network timeouts; do not increase these without reviewing the lease duration.
 After an abrupt stop a new worker may need to wait for the lease to expire. Graceful completion
-releases it. A single dedicated bot/database pair is supported.
+releases it. A single dedicated bot/database pair is supported. Polling requests both message and callback
+updates. Callback popup acknowledgements are best effort after the durable reply/offset commit;
+an expired popup does not undo or repeat the stored decision.
 
 Successful mutations and their replay receipts commit together. Reply outbox rows and the
 polling offset commit together. A crash between these transactions replays the same mutation
@@ -47,3 +49,11 @@ storage, and verify restoration into a temporary database. PostgreSQL requires p
 encrypted off-host retention and restore tests before production. Receipt/outbox retention,
 log rotation, disk limits, worker monitoring and alerting remain pending. Do not purge replay
 receipts while the corresponding Telegram updates can still be replayed.
+
+## Metadata quota
+Official YouTube metadata is opt-in with a dedicated key. The api_usage row counts reserved
+requests per Tehran day; failures are counted conservatively. Cache hits do not reserve again.
+Do not delete usage rows to bypass a daily limit. Account-wide API quota and use by other
+applications are not measured. Keep HTTP debug logs disabled so API-key query parameters stay
+private. Metadata refresh cannot silently change an already researched idea; reopen research
+first when its cache has expired. No live metadata calls were made during validation.

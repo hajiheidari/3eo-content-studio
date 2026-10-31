@@ -23,21 +23,6 @@ RESEARCH = dict(
 NOW = datetime(2026, 10, 31, 1, 30, tzinfo=timezone.utc)
 
 
-@pytest.fixture
-def app(tmp_path):
-    application = create_app(f"sqlite:///{tmp_path}/scout.db", token="admin-test",
-                             telegram_token="gateway-test", allowed_users={123})
-    Base.metadata.create_all(application.state.engine)
-    yield application
-    application.state.engine.dispose()
-
-
-@pytest.fixture
-def client(app):
-    with TestClient(app, headers={"Authorization": "Bearer admin-test"}) as client:
-        yield client
-
-
 def submit(client):
     item = client.post("/items", json={"url": "https://youtu.be/abcdefghijk"}).json()["id"]
     client.put(f"/items/{item}/transcript", json={"text": "authorized", "provenance": "permission"})
@@ -123,16 +108,21 @@ class FakeTelegram:
     def __init__(self):
         self.incoming, self.sent, self.failure = [], [], None
         self.offsets = []
+        self.markups, self.answers = [], []
 
     def updates(self, offset):
         self.offsets.append(offset)
         return [u for u in self.incoming if u["update_id"] >= offset]
 
-    def send(self, chat_id, text):
+    def send(self, chat_id, text, reply_markup=None):
         if self.failure:
             raise self.failure
         self.sent.append((chat_id, text))
+        self.markups.append(reply_markup)
         return len(self.sent)
+
+    def answer(self, callback_id):
+        self.answers.append(callback_id)
 
 
 def worker(app, client, telegram, clock=None):

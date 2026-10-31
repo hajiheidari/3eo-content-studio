@@ -1,5 +1,6 @@
 """Opt-in polling and durable delivery. No publication or media work."""
 
+import json
 import os
 import time
 import uuid
@@ -12,7 +13,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from .domain import report_day
 from .storage import Cursor, Delivery, database
-from .telegram import TelegramGateway, idea_text
+from .telegram import TelegramGateway, idea_keyboard, idea_text
 
 
 def chunks(text, limit=3500):
@@ -70,17 +71,23 @@ class TelegramHTTP:
 
     def updates(self, offset):
         result = self.call("getUpdates", {"offset": offset, "limit": 5, "timeout": 20,
-                                          "allowed_updates": ["message"]})
+                                          "allowed_updates": ["message", "callback_query"]})
         if not isinstance(result, list):
             raise TelegramFailure("uncertain")
         return result
 
-    def send(self, chat_id, text):
-        result = self.call("sendMessage", {"chat_id": chat_id, "text": text,
-                                           "link_preview_options": {"is_disabled": True}})
+    def send(self, chat_id, text, reply_markup=None):
+        payload = {"chat_id": chat_id, "text": text,
+                   "link_preview_options": {"is_disabled": True}}
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
+        result = self.call("sendMessage", payload)
         if not isinstance(result, dict) or type(result.get("message_id")) is not int:
             raise TelegramFailure("uncertain")
         return result["message_id"]
+
+    def answer(self, callback_id):
+        self.call("answerCallbackQuery", {"callback_query_id": callback_id})
 
 
 class Worker:
@@ -116,11 +123,14 @@ class Worker:
             session.commit()
 
     @staticmethod
-    def enqueue(session, key, user, text):
-        for part, content in enumerate(chunks(text)):
+    def enqueue(session, key, user, text, markup=None):
+        parts = chunks(text)
+        for part, content in enumerate(parts):
             delivery_key = f"{key}:{user}:{part}"
             if session.get(Delivery, delivery_key) is None:
-                session.add(Delivery(key=delivery_key, chat_id=user, text=content))
+                session.add(Delivery(key=delivery_key, chat_id=user, text=content,
+                                     reply_markup=json.dumps(markup) if markup and
+                                     part == len(parts) - 1 else None))
 
     def prepare(self, now):
         if report_day(now) is None:
@@ -137,7 +147,7 @@ class Worker:
                              header if report["ideas"] else header + "ایده پژوهش‌شده‌ای موجود نیست.")
                 for position, item in enumerate(report["ideas"]):
                     self.enqueue(session, f"report:{report['day']}:idea:{position:02d}:{item['id']}",
-                                 user, idea_text(item))
+                                 user, idea_text(item), idea_keyboard(item))
             session.commit()
 
     def poll(self):
@@ -150,7 +160,7 @@ class Worker:
             if type(update_id) is not int or update_id < offset:
                 continue
             try:
-                reply = self.gateway.handle(incoming)
+                reply = self.gateway.process(incoming)
             except PermissionError:
                 reply = None
             # Mutations use an API receipt; replay after a crash cannot repeat the write.
@@ -162,10 +172,15 @@ class Worker:
                     session.add(cursor)
                 if cursor.offset <= update_id:
                     if reply:
-                        user = incoming["message"]["from"]["id"]
-                        self.enqueue(session, f"update:{update_id}", user, reply)
+                        self.enqueue(session, f"update:{update_id}", reply.user_id,
+                                     reply.text, reply.markup)
                     cursor.offset = update_id + 1
                 session.commit()
+            if reply and reply.callback_id:
+                try:
+                    self.telegram.answer(reply.callback_id)
+                except TelegramFailure:
+                    pass  # A stale popup acknowledgement must not replay a committed decision.
             offset = update_id + 1
 
     def deliver(self, now):
@@ -200,7 +215,11 @@ class Worker:
                     session.commit()
                     continue
                 try:
-                    message_id = self.telegram.send(delivery.chat_id, delivery.text)
+                    markup = json.loads(delivery.reply_markup) if delivery.reply_markup else None
+                    if markup:
+                        message_id = self.telegram.send(delivery.chat_id, delivery.text, markup)
+                    else:
+                        message_id = self.telegram.send(delivery.chat_id, delivery.text)
                 except TelegramFailure as exc:
                     delivery.error = f"Telegram {exc.kind}"
                     delivery.status = exc.kind

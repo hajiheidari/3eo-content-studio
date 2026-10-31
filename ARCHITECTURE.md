@@ -11,15 +11,16 @@ Use one Python application with FastAPI and SQLAlchemy. SQLite supports isolated
 work; PostgreSQL is the production target, pending integration validation. Alembic owns
 schema changes. Avoid Redis until durable worker concurrency warrants it. Large media
 will live outside the database. Research providers are injected; default is unavailable,
-never fabricated analysis. Source URLs are identifiers only; no automatic URL fetch occurs.
+never fabricated analysis. Submitted URLs are identifiers only. The opt-in YouTube metadata operation calls a fixed
+official Google endpoint with a validated video ID; submitted URLs and redirects are never fetched.
 
 Implemented schema: source_items (unique platform/content_id and optimistic version), audit_logs, daily_reports
 (unique Tehran date). Transcript provenance and structured research are stored with their
 source. Further normalized roles, scripts, storyboards, media, jobs, settings, quotas and
 publication records are planned before their respective features. Migration 0002 adds atomic
 mutation_receipts, worker_cursors (offsets/lease/cooldown), and a per-message telegram_outbox.
-The full schema in the
-brief is a target, not implemented functionality.
+Migrations 0003–0004 add durable inline keyboards, cached source metadata and daily
+api_usage request reservations. The full schema in the brief is a target, not implemented functionality.
 
 Manual flow: authenticated link → normalized identifier → authorized transcript and
 user-supplied metadata → validated reviewed research or injected provider → weighted score
@@ -32,6 +33,11 @@ with mocked Telegram transport. Confirmed message IDs distinguish sent messages 
 outcomes; uncertain sends are held for review rather than automatically resent. A dedicated
 gateway credential asserts allowlisted Telegram identities. No worker is installed or running.
 
-Next: verify PostgreSQL CI and isolated live bot acceptance; verified metadata adapters;
-configured AI adapter; inline callbacks; producer and script approvals; media processing;
+PostgreSQL 16.2 integration was verified in an isolated temporary local instance. Versioned
+inline decisions bind approval to the reviewed revision, and callback acknowledgement is
+separate from durable command/reply processing. The YouTube metadata adapter has a one-hour
+cache and atomic Tehran-date request limits; it is disabled by default and tested with mocks.
+
+Next: verify PostgreSQL 17 CI and isolated live bot acceptance; Instagram metadata permissions;
+configured AI adapter; producer and script approvals; media processing;
 dashboard, operator reconciliation, monitoring and security hardening.

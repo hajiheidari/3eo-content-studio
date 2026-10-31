@@ -28,6 +28,6 @@ jobs:
           version: '0.13.6'
       - run: uv sync --frozen
       - run: uv run --frozen pytest -q
-      - run: uv run --frozen ruff check src tests migrations
+      - run: uv run --frozen ruff check src tests migrations scripts
       - run: uv run --frozen alembic upgrade head
       - run: uv run --frozen alembic upgrade head
