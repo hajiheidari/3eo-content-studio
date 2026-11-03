@@ -129,3 +129,61 @@ def test_telegram_authorization(client):
         }
     )
     assert "شناسه" in result
+
+
+def test_unicode_wrong_token_is_denied(client):
+    # HTTP headers are bytes on the wire; token comparisons must not raise TypeError.
+    import httpx
+
+    request = httpx.Request(
+        "GET", "http://testserver/items", headers={b"Authorization": "Bearer فارسی".encode()}
+    )
+    # Starlette decodes raw headers as Latin-1, matching ASGI.
+    response = client.send(request)
+    assert response.status_code == 401
+
+
+def test_near_duplicates_are_advisory(client):
+    ids = []
+    for video in ["abcdefghijk", "abcdefghijl"]:
+        item = client.post("/items", json={"url": f"https://youtu.be/{video}"}).json()["id"]
+        ids.append(item)
+        client.put(
+            f"/items/{item}/transcript",
+            json={"text": "متن آموزشی سئو برای آزمایش", "provenance": "authorized"},
+        )
+    result = client.get(f"/items/{ids[0]}/duplicates").json()
+    assert result["advisory"] is True
+    assert result["matches"][0]["id"] == ids[1]
+    assert result["matches"][0]["similarity"] == 1
+
+
+def test_telegram_transcript_and_provider_flow(client):
+    from studio.telegram import TelegramGateway
+
+    bot = TelegramGateway({123}, client)
+
+    def command(text):
+        return bot.handle(
+            {"message": {"from": {"id": 123}, "chat": {"type": "private"}, "text": text}}
+        )
+
+    command("https://youtu.be/abcdefghijk")
+    assert "ثبت شد" in command("/transcript 1\ncreator permission\nAuthorized transcript")
+    assert "ساخته نشد" in command("/analyze 1")
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://youtube.com:0/watch?v=abcdefghijk",
+        "https://youtube.com:/watch?v=abcdefghijk",
+        "https://@youtube.com/watch?v=abcdefghijk",
+        "https://youtube.com/watch?v=abcdefghijk&v=abcdefghijl",
+        "https://youtube.com/shorts/extra/abcdefghijk",
+        "https://you\ntube.com/watch?v=abcdefghijk",
+    ],
+)
+def test_ambiguous_urls_are_rejected(url):
+    with pytest.raises(ValueError):
+        normalize_url(url)

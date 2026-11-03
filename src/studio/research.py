@@ -15,6 +15,10 @@ class Research(BaseModel):
     claims_to_verify: list[str]
     limitations: list[str] = Field(min_length=1)
     criteria: dict[str, float]
+    why_it_matters_fa: str | None = Field(default=None, max_length=2000)
+    tool_connection_fa: str | None = Field(default=None, max_length=1000)
+    recommended_format_fa: str | None = Field(default=None, max_length=300)
+    confidence: float | None = Field(default=None, ge=0, le=1)
 
     @field_validator("title_fa", "summary_fa", "angle_fa")
     @classmethod

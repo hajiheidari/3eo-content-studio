@@ -222,3 +222,5 @@ __marimo__/
 # Local studio state
 studio.db
 studio.db-*
+
+studio-worker.lock
