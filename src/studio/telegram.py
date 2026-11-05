@@ -196,6 +196,12 @@ class TelegramGateway:
                     headers=actor,
                 ).raise_for_status()
                 return "پژوهش بیشتر ثبت شد. متن تکمیلی را بفرست؛ به همین ایده وصل می‌شود. اگر رونوشت است نوع متن را انتخاب کن."
+            if response.status_code == 409:
+                existing = self.studio.get(f"/items/{item_id}", headers=actor)
+                if existing.status_code == 200 and existing.json()["status"] == status:
+                    return f"این وضعیت برای ایدهٔ #{item_id} قبلاً ثبت شده است؛ نیازی به کلیک دوباره نیست."
+            if response.status_code == 200 and status == "IDEA_APPROVED":
+                return f"ایدهٔ #{item_id} تأیید شد و در فهرست ایده‌های تأییدشده قرار گرفت. این تأیید، انتشار یا تولید خودکار ویدئو را شروع نمی‌کند؛ بخش تولید هنوز آماده نیست."
             return "ثبت شد." if response.status_code == 200 else "تغییر وضعیت مجاز نیست."
         if text == "/today":
             response = self.studio.get("/reports/today")

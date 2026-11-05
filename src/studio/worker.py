@@ -115,7 +115,15 @@ class Worker:
                 try:
                     self.gateway.authorize(event)
                     if "callback_query" in event:
-                        self.telegram.answer_callback(event["callback_query"]["id"])
+                        try:
+                            self.telegram.answer_callback(event["callback_query"]["id"])
+                        except (DeliveryUncertain, RetryLater):
+                            # Expired Telegram UI acknowledgements do not invalidate an
+                            # authorized business action. Never replay the action for UI errors.
+                            print(
+                                "Callback acknowledgement unavailable; processing authorized action",
+                                flush=True,
+                            )
                     incoming = self.gateway.message(event).get("text", "")
                     if 80 <= len(incoming) <= 12000 and not incoming.startswith(("/", "https://")):
                         self.telegram.send(

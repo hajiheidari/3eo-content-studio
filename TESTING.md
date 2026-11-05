@@ -9,7 +9,7 @@ uv run alembic upgrade head
 uv run alembic check
 ```
 
-84 tests pass. Coverage includes URL/SSRF validation, canonical/advisory duplicates,
+86 tests pass. Coverage includes URL/SSRF validation, canonical/advisory duplicates,
 transcript/evidence gating, research validation, source-context isolation, plain-text intake,
 standalone text, new-idea reset, provider failures, concrete demonstration plan, scoring,
 optimistic approval writes/audits, safe metadata/feeds and response caps, Telegram sender
@@ -33,3 +33,9 @@ The final plan is structured as topic/input/action/comparison; it remains a foun
 hypothesis. Live YouTube metadata failed at the proxy with 403, so no watched-video or full
 transcript claim is made. PostgreSQL, unattended scheduling under load, broad editorial
 quality and the full script/media/render/export workflow remain unvalidated or unimplemented.
+
+
+Approval incident regressions: expired Telegram callback acknowledgement must not suppress
+the business action; repeated approval must create one audit transition and a clear response.
+Live reconciliation after the founder's chat confirmation verified IDEA_APPROVED and actual
+Telegram confirmation delivery. No synthetic callback or publication was claimed.

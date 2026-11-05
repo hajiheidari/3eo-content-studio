@@ -34,3 +34,12 @@ retention and restore tests before deployment. Media backups, disk checks, worke
 render timeouts and log rotation remain gates for future producer workers. No rendering/model
 download occurs automatically. Feed bodies are capped at 512 KiB/50 entries; at most 10 sources
 may be registered. Metadata is capped at 256 KiB; local model responses at 128 KiB.
+
+
+## Development environment restart
+Publishing/recreating a cloud snapshot preserves files, not processes. An online environment
+status is not proof the API or bot is running. Check actual processes and local health; restart
+model/API/worker per docs/LOCAL_AI.md after restoration. Do not tell users this is an always-on
+bot. Persistent production hosting requires a separate inspected/approved deployment.
+Expired callback UI acknowledgements are best effort and must not prevent authorized state
+transitions. Duplicate approval requests report existing state without duplicate audit writes.

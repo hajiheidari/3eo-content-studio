@@ -90,19 +90,16 @@ def test_link_then_plain_description_runs_analysis_and_approval(setup):
     source = calls[0]["messages"][-1]["content"]
     assert "description" in source and TEXT in source
     assert calls[0]["response_format"]["type"] == "json_schema"
-    assert (
-        bot.handle(
-            {
-                "callback_query": {
-                    "id": "approve",
-                    "from": {"id": 123},
-                    "message": {"chat": {"type": "private"}},
-                    "data": "approve:1",
-                }
+    assert bot.handle(
+        {
+            "callback_query": {
+                "id": "approve",
+                "from": {"id": 123},
+                "message": {"chat": {"type": "private"}},
+                "data": "approve:1",
             }
-        )
-        == "ثبت شد."
-    )
+        }
+    ).startswith("ایدهٔ #1 تأیید شد")
     assert client.get("/items/1").json()["status"] == "IDEA_APPROVED"
 
 
@@ -257,3 +254,22 @@ def test_new_idea_menu_resets_context_without_deleting_sources(setup):
     bot.handle(message(123, TEXT))
     assert client.get("/items/1").json()["status"] == "DISCOVERED"
     assert client.get("/items/2").json()["evidence_kind"] == "user_text"
+
+
+def test_repeated_approval_returns_clear_confirmation_once(setup):
+    from sqlalchemy import select
+    from sqlalchemy.orm import Session
+
+    from studio.storage import Audit
+
+    client, _ = setup
+    bot = TelegramGateway({123}, client)
+    bot.handle(message(123, TEXT))
+    first = bot.handle(message(123, "/approve 1"))
+    second = bot.handle(message(123, "/approve 1"))
+    assert "ایدهٔ #1 تأیید شد" in first
+    assert "قبلاً ثبت شده" in second
+    with Session(client.app.state.engine) as session:
+        assert (
+            len(session.scalars(select(Audit).where(Audit.current == "IDEA_APPROVED")).all()) == 1
+        )

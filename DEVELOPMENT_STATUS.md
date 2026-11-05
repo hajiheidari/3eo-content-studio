@@ -1,7 +1,7 @@
 # Implementation status
 
 Branch: codex/m1-foundation. PR: https://github.com/hajiheidari/3eo-content-studio/pull/2
-Updated: 2026-11-05.
+Updated: 2026-11-06.
 
 ## Working private development workflow
 Supported link → persistent per-user context → plain description/authorized transcript →
@@ -19,14 +19,14 @@ CPU runtime llama.cpp b12129 is verified and private. Four threads, one slot, 81
 See docs/LOCAL_AI.md for complete setup and startup. Network/model blockers are now resolved.
 
 ## Evidence
-84 tests pass; Ruff and SQLite migration/schema consistency pass (revision 0004).
+86 tests pass; Ruff and SQLite migration/schema consistency pass (revision 0004).
 Tests cover URL/SSRF/body limits, metadata, safe feeds, source/context isolation, plain-text
 intake, provider schemas/failures, research quality gates, scoring, audits, callbacks, Telegram
 authorization, timezone, outbox/restart behavior, existing-data migrations and artifact integrity.
 Actual item 1 was analyzed by the running local model without supplied research output. The
 final structured-plan run returned HTTP 200 in 117.5s, status RESEARCHED, score 53/confidence
 0.4. Actual persisted output was delivered to the approved Telegram user with review buttons.
-The founder has not approved it yet. This is a preliminary idea based on a public description,
+The founder subsequently confirmed approval in chat after repeated unresponsive bot clicks; it was reconciled as an admin-audited IDEA_APPROVED transition and a private confirmation was delivered. This is a preliminary idea based on a public description,
 not full-video analysis or proven SEO advice. No made-up metrics, creator or publication date.
 
 Early small-model outputs were weak and held for more research rather than published. Retired
@@ -51,3 +51,20 @@ and infrastructure inspection are still absent. No production or Espadna Sim com
 run. Runtime is cloud development only; processes must restart after a snapshot restore.
 M2–M4 remain pending: script/producer, media/audio/video/subtitles, Remotion, dashboard,
 full hardening and controlled deployment. The entire original project is not complete.
+
+
+## Approval incident (2026-11-06)
+After development-environment publication/recreation, model/API/worker processes were absent;
+filesystem persistence had not kept the bot online. Item 1 was still RESEARCHED and no approval
+transition existed. No pending Telegram callbacks were available when checked. The founder's
+explicit reported approval was reconciled through the authenticated API (actor admin, not a
+fabricated Telegram callback), then verified as IDEA_APPROVED and confirmed through the bot.
+
+Fixed a second failure mode: expired answerCallbackQuery/acknowledgement errors no longer
+skip the authorized approval action. Repeated approvals now return a clear already-recorded
+message with one transition. Approval messages explain that script/video generation remains
+unimplemented. Model, API and private worker were restarted only in this development machine.
+86 tests pass, including expired callback and repeated-approval regressions. Continuous bot
+availability still requires a persistent runtime; this ephemeral cloud task is not a permanent
+server deployment. Production deployment remains blocked on infrastructure inspection and
+explicit founder approval. Publishing/restoring the dev snapshot requires service restart.

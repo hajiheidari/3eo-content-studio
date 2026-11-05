@@ -212,3 +212,31 @@ def test_callback_worker_acknowledges_and_replies(setup):
     assert acknowledged == ["query-id"]
     assert len(telegram.sent) == 1
     assert studio.calls[0][0] == "/items/1/transition"
+
+
+def test_expired_callback_ack_does_not_drop_authorized_approval(setup):
+    sessions, studio, telegram = setup
+
+    def expired(query):
+        raise DeliveryUncertain("expired query")
+
+    telegram.answer_callback = expired
+    telegram.events = [
+        {
+            "update_id": 90,
+            "callback_query": {
+                "id": "old-query",
+                "from": {"id": 123},
+                "message": {"chat": {"type": "private"}},
+                "data": "approve:1",
+            },
+        }
+    ]
+    worker = Worker(sessions, studio, telegram, {123})
+    worker.poll()
+    assert studio.calls[0][0] == "/items/1/transition"
+    assert len(telegram.sent) == 1
+    worker.poll()
+    assert len(studio.calls) == 1 and len(telegram.sent) == 1
+    with sessions() as session:
+        assert session.get(BotUpdate, 90).status == "handled"

@@ -15,9 +15,9 @@ four threads/one slot. Suggestions require a concrete topic/input/action/compari
 repeated claims/generic fields are rejected. Evidence boundaries come from stored input.
 Model artifacts/DB/secrets remain outside Git. No paid API, production or Espadna changes.
 
-Validation: 84 tests, Ruff, migration/schema consistency and real loopback smoke pass.
+Validation: 86 tests, Ruff, migration/schema consistency and real loopback smoke pass.
 Actual item 1 description → live model/API → stored draft → Telegram result/keyboard passed
-(117.5s, score 53/confidence 0.4). Founder approval remains pending. Repeated setup on the
+(117.5s, score 53/confidence 0.4). The founder later confirmed approval in chat; after an environment-recreation outage it was reconciled with an admin audit and a delivered Telegram confirmation. Repeated setup on the
 running model passes after fixing native-library re-extraction. Observed model RSS ~16 GiB;
 this is a cloud development pilot, not an inspected production sizing recommendation.
 
@@ -26,3 +26,9 @@ Pre-deadline discovery/research scheduling, official API quotas, PostgreSQL inte
 production hardening and M2–M4 producer/media/dashboard remain pending. CPU inference can
 delay one sequential worker; no unattended scheduling SLA or editorial quality guarantee.
 No deployment or automatic publication is authorized.
+
+
+Fix approval silence after outages: best-effort Telegram callback acknowledgement cannot
+abort an authorized action; repeat clicks report the existing status. Two regressions pass.
+Ephemeral snapshot restoration stops services, so restarting the development processes was
+necessary; no always-on hosting or production deployment is claimed.
