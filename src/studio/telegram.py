@@ -1,5 +1,9 @@
 """Private Telegram update handler. Network polling/delivery is deliberately opt-in."""
 
+import re
+
+from .reports import format_report
+
 
 class TelegramGateway:
     def __init__(self, allowed_users: set[int], studio):
@@ -7,8 +11,26 @@ class TelegramGateway:
             raise ValueError("Approved Telegram user IDs required")
         self.allowed_users, self.studio = allowed_users, studio
 
+    def message(self, update):
+        if "callback_query" not in update:
+            return update.get("message", {})
+        query = update["callback_query"]
+        match = re.fullmatch(
+            r"(approve|reject|save|research):([1-9][0-9]{0,18})", query.get("data", "")
+        )
+        if not match:
+            raise PermissionError("Unsupported callback")
+        return {
+            "from": query.get("from", {}),
+            "chat": query.get("message", {}).get("chat", {}),
+            "text": f"/{match[1]} {match[2]}",
+        }
+
+    def recipient(self, update):
+        return self.message(update)["from"]["id"]
+
     def handle(self, update: dict) -> str:
-        message = update.get("message", {})
+        message = self.message(update)
         if (
             message.get("from", {}).get("id") not in self.allowed_users
             or message.get("chat", {}).get("type") != "private"
@@ -67,6 +89,31 @@ class TelegramGateway:
                 f"/items/{item_id}/transition", json={"status": status}, headers=actor
             )
             return "ثبت شد." if response.status_code == 200 else "تغییر وضعیت مجاز نیست."
+        if text == "/today":
+            response = self.studio.get("/reports/today")
+            if response.status_code == 404:
+                return "گزارش امروز هنوز آماده نشده است."
+            response.raise_for_status()
+            data = response.json()
+            return format_report(data["day"], data["ideas"])
+        if text.startswith("/idea "):
+            item_id = text.removeprefix("/idea ").strip()
+            if not item_id.isdigit():
+                return "شناسه عددی ایده لازم است."
+            response = self.studio.get(f"/items/{item_id}")
+            if response.status_code == 404:
+                return "ایده پیدا نشد."
+            response.raise_for_status()
+            idea = response.json()
+            if not idea["research"]:
+                return f"ایده #{idea['id']} — {idea['status']}\n{idea['url']}\nپژوهش هنوز انجام نشده است."
+            r = idea["research"]
+            return (
+                f"#{idea['id']} {r['title_fa']}\n{idea['url']}\n"
+                f"خلاصه: {r['summary_fa']}\nزاویه پیشنهادی: {r['angle_fa']}\n"
+                f"ادعاهای نیازمند بررسی: {'؛ '.join(r['claims_to_verify'])}\n"
+                f"محدودیت‌ها: {'؛ '.join(r['limitations'])}\nامتیاز: {idea['score']}"
+            )
         if text == "/ideas":
             response = self.studio.get("/items")
             response.raise_for_status()
@@ -74,4 +121,4 @@ class TelegramGateway:
                 "\n".join(f"{i['id']}: {i['status']} {i['url']}" for i in response.json()[:10])
                 or "ایده‌ای ثبت نشده است."
             )
-        return "لینک ویدئو را ارسال کنید. /ideas /metadata ID /transcript ID /analyze ID /approve ID /reject ID /save ID /research ID"
+        return "لینک ویدئو را ارسال کنید. /today /ideas /idea ID /metadata ID /transcript ID /analyze ID /approve ID /reject ID /save ID /research ID"

@@ -12,6 +12,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 
 from .domain import report_day
+from .reports import format_report, report_keyboard
 from .storage import BotCursor, BotUpdate, Delivery, Report, database
 from .telegram import TelegramGateway
 
@@ -56,40 +57,35 @@ class TelegramAPI:
     def updates(self, offset):
         return self.call(
             "getUpdates",
-            {"offset": offset, "timeout": 20, "limit": 20, "allowed_updates": ["message"]},
+            {
+                "offset": offset,
+                "timeout": 20,
+                "limit": 20,
+                "allowed_updates": ["message", "callback_query"],
+            },
         )
 
-    def send(self, recipient, text):
+    def answer_callback(self, query_id):
+        return self.call("answerCallbackQuery", {"callback_query_id": query_id})
+
+    def send(self, recipient, text, keyboard=None):
         text = text.encode("utf-16-le")[:7800].decode("utf-16-le", errors="ignore")
         result = self.call(
             "sendMessage",
-            {"chat_id": recipient, "text": text, "link_preview_options": {"is_disabled": True}},
+            {
+                "chat_id": recipient,
+                "text": text,
+                "link_preview_options": {"is_disabled": True},
+                **(
+                    {"reply_markup": keyboard}
+                    if keyboard and keyboard.get("inline_keyboard")
+                    else {}
+                ),
+            },
         )
         if not isinstance(result, dict) or not isinstance(result.get("message_id"), int):
             raise DeliveryUncertain("Telegram message confirmation missing")
         return str(result["message_id"])
-
-
-def format_report(day, ideas):
-    # One compact message avoids partial multi-message delivery and caps Telegram UTF-16 length.
-    lines = [f"گزارش ایده‌های 3EO — {day}"]
-    for idea in ideas[:5]:
-        r = idea["research"]
-        lines.append(
-            f"\n#{idea['id']} {r['title_fa'][:40]}\n{idea['url']}\n"
-            f"سازنده: {(idea.get('author') or 'نامشخص')[:20]} | تاریخ: {(idea.get('published_at') or 'نامشخص')[:20]}\n"
-            f"امتیاز: {idea['score']} | اطمینان: {r.get('confidence') if r.get('confidence') is not None else 'ثبت نشده'}\nخلاصه: {r['summary_fa'][:45]}\n"
-            f"اهمیت: {(r.get('why_it_matters_fa') or 'ثبت نشده')[:30]}\n"
-            f"ارتباط با 3EO: {(r.get('tool_connection_fa') or 'ثبت نشده')[:30]}\n"
-            f"قالب: {(r.get('recommended_format_fa') or 'ثبت نشده')[:20]}\n"
-            f"زاویه: {r['angle_fa'][:45]}\nمحدودیت: {'؛ '.join(r['limitations'])[:50]}\n"
-            f"/approve {idea['id']} /reject {idea['id']} /save {idea['id']} /research {idea['id']}"
-        )
-    if not ideas:
-        lines.append("ایده پژوهش‌شده‌ای آماده نیست؛ لینک یا متن مجاز ارسال کنید.")
-    text = "\n".join(lines)
-    # Hard bound, including astral Unicode characters.
-    return text.encode("utf-16-le")[:7800].decode("utf-16-le", errors="ignore")
 
 
 class Worker:
@@ -118,7 +114,9 @@ class Worker:
                 state = "handled"
                 try:
                     reply = self.gateway.handle(event)
-                    recipient = event["message"]["from"]["id"]
+                    recipient = self.gateway.recipient(event)
+                    if "callback_query" in event:
+                        self.telegram.answer_callback(event["callback_query"]["id"])
                     self.telegram.send(recipient, reply)
                 except PermissionError:
                     state = "ignored"
@@ -187,7 +185,9 @@ class Worker:
             status, message_id, next_attempt = "sent", None, 0
             try:
                 message_id = self.telegram.send(
-                    int(delivery.recipient), format_report(day, payload)
+                    int(delivery.recipient),
+                    format_report(day, payload),
+                    keyboard=report_keyboard(payload),
                 )
             except RetryLater as exc:
                 status = "retry" if delivery.attempts < 4 else "failed"

@@ -31,7 +31,7 @@ class Telegram:
     def updates(self, offset):
         return [e for e in self.events if e["update_id"] >= offset]
 
-    def send(self, user, text):
+    def send(self, user, text, keyboard=None):
         self.sent.append((user, text))
         if self.error:
             raise self.error
@@ -171,3 +171,41 @@ def test_report_unicode_bound():
     }
     text = format_report("2026-11-03", [idea] * 5)
     assert len(text.encode("utf-16-le")) <= 7800
+
+
+def test_report_keyboard_sent_to_telegram():
+    import json
+
+    from studio.reports import report_keyboard
+
+    payloads = []
+
+    def handler(request):
+        payloads.append(json.loads(request.content))
+        return httpx.Response(200, json={"ok": True, "result": {"message_id": 7}})
+
+    api = TelegramAPI("test", httpx.Client(transport=httpx.MockTransport(handler)))
+    keyboard = report_keyboard([{"id": 42}])
+    assert api.send(123, "گزارش", keyboard=keyboard) == "7"
+    assert payloads[0]["reply_markup"]["inline_keyboard"][0][0]["callback_data"] == "approve:42"
+
+
+def test_callback_worker_acknowledges_and_replies(setup):
+    sessions, studio, telegram = setup
+    acknowledged = []
+    telegram.answer_callback = acknowledged.append
+    telegram.events = [
+        {
+            "update_id": 20,
+            "callback_query": {
+                "id": "query-id",
+                "from": {"id": 123},
+                "message": {"chat": {"type": "private"}},
+                "data": "approve:1",
+            },
+        }
+    ]
+    Worker(sessions, studio, telegram, {123}).poll()
+    assert acknowledged == ["query-id"]
+    assert len(telegram.sent) == 1
+    assert studio.calls[0][0] == "/items/1/transition"

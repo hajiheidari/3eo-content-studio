@@ -55,14 +55,15 @@ uv run python -m studio.worker
 
 `--once` runs one cycle and exits nonzero on failure. Commands: send a URL; `/metadata ID`;
 `/transcript ID` followed by a provenance line and the authorized transcript; `/analyze ID`;
-`/ideas`; `/approve ID`; `/reject ID`; `/save ID`; `/research ID` (request more research).
+`/today`; `/ideas`; `/idea ID`; `/approve ID`; `/reject ID`; `/save ID`; `/research ID` (request more research).
 Only approved users in private chats are accepted. No automatic publication or script generation.
 
 The worker checks for current-day reports after 05:00 Asia/Tehran. Healthy cycle latency can
 include a 20-second long poll and a five-second wait; exact-second dispatch is not guaranteed.
 One worker per shared database/token; process lock defaults to ignored `studio-worker.lock`.
 Do not move/change the lock path while another worker is running. See OPERATIONS.md for
-uncertain delivery recovery. No actual bot was activated during implementation.
+uncertain delivery recovery. A private bot session was validated in cloud development; it is not a production service.
+New reports include inline approval buttons; every callback checks the sender allowlist.
 
 ## Official feeds
 `POST /sources` accepts `name`, HTTPS `url`, and optional `enabled` (default true).

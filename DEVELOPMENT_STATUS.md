@@ -1,6 +1,6 @@
 # Implementation status
 
-Updated: 2026-11-03. Branch: `codex/m1-foundation`.
+Updated: 2026-11-05. Branch: `codex/m1-foundation`.
 
 ## M0
 Repository inspected; initial main contained README and gitignore only. Architecture,
@@ -31,10 +31,13 @@ not evidence about the production host. No production or Espadna Sim changes.
 - One report/day and one outbox record/day/recipient. Confirmed 429 responses use bounded
   exponential backoff; uncertain send/timeouts and interrupted sends are held for operator
   review, preventing blind duplicate sends. No exactly-once network guarantee is claimed.
+- Inline report buttons support approve/reject/save/more research; callback senders are
+  independently authorized and callback query acknowledgements are sent. /today reads the
+  prepared report and /idea ID exposes the complete research details.
 - Three Alembic revisions, frozen dependencies and CI including migration consistency checks.
 
 ## Validation
-63 automated tests pass, including the mocked manual Telegram → authorized transcript →
+67 automated tests pass, including the mocked manual Telegram → authorized transcript →
 local-model research → report → approval flow. Tests cover SSRF inputs, redirects, oversized
 responses, invalid AI output, unsafe XML, missing evidence, duplicate ingestion/reporting,
 private user access, Tehran deadline, restart/outbox behavior, stale approval writes and
@@ -45,17 +48,29 @@ One upstream Starlette/httpx TestClient deprecation warning remains. PostgreSQL 
 external APIs are not validated; mocked tests do not establish research quality or delivery.
 
 ## Remaining M1 work and actual blockers
-Live bot/model validation needs a dedicated Telegram token, approved Telegram user ID(s),
-a securely set local admin token and an installed/selected local model. None are present
-in this machine. No messages, paid calls or model downloads have been performed.
-Network currently blocks GitHub API and external integrations. A configuration draft saves
-install/start instructions, domain additions, the dedicated Telegram secret requirement and
-variable requirements for review. Saving does not apply runtime changes or publish it.
-Git push works; PR operations return Forbidden. Apply reviewed network configuration before
-retesting API access; an absent CLI login is not proof a new GitHub token is needed.
+Dedicated Telegram credentials, approved user IDs and the local admin token are now bound.
+Read-only getMe succeeded, no webhook was configured, and the private worker was explicitly
+started in this cloud development session. A current-day report has a confirmed sent outbox
+record. The founder submitted a real YouTube link: the inbound update was handled, item #1
+was persisted as DISCOVERED and Telegram accepted the reply. New /today and /idea routes
+were checked against the running loopback API after a controlled restart. The local model
+is still absent; no automatic analysis, paid calls or model downloads occurred. Inline buttons
+have mocked tests; no live approval callback is claimed.
+
+A live metadata attempt for the submitted video failed with proxy 403 Forbidden despite the
+configured YouTube host allowance. No metadata, publication date or transcript was invented.
+Manual authorized transcript and user-supplied metadata remain the fallback. Diagnose upstream
+proxy access before claiming live YouTube readiness; do not bypass proxy/TLS verification.
+
+GitHub API access now works. Draft PR #2 against main is open for this branch:
+https://github.com/hajiheidari/3eo-content-studio/pull/2
+The separate PR #1 targets codex/m1-scout-delivery; it was inspected only to distinguish it
+from this branch and was not modified. Development processes are ephemeral and do not imply
+production deployment or guaranteed 24-hour uptime. Persistent STUDIO_TELEGRAM_ENABLED
+was not changed; this session used an explicit per-process enablement override.
 
 Automatic source collection/research scheduling before the report deadline, official YouTube
-search/channel discovery and quota accounting, Telegram inline callbacks, dedicated roles,
+search/channel discovery and quota accounting, Telegram dedicated roles,
 production rate limiting and wider trusted feed configuration remain pending. Current feeds
 are refreshed explicitly; daily delivery reports ideas already researched by the cutoff.
 M1 is not yet accepted as a complete, live-tested MVP.

@@ -187,3 +187,38 @@ def test_telegram_transcript_and_provider_flow(client):
 def test_ambiguous_urls_are_rejected(url):
     with pytest.raises(ValueError):
         normalize_url(url)
+
+
+def test_callback_authorization_and_item_details(client):
+    from studio.telegram import TelegramGateway
+
+    bot = TelegramGateway({123}, client)
+    item = client.post("/items", json={"url": "https://youtu.be/abcdefghijk"}).json()["id"]
+
+    def callback(user, action, chat="private"):
+        return {
+            "callback_query": {
+                "id": "query-test",
+                "from": {"id": user},
+                "message": {"chat": {"type": chat}},
+                "data": f"{action}:{item}",
+            }
+        }
+
+    with pytest.raises(PermissionError):
+        bot.handle(callback(999, "reject"))
+    with pytest.raises(PermissionError):
+        bot.handle(callback(123, "reject", "group"))
+    with pytest.raises(PermissionError):
+        bot.handle(callback(123, "publish"))
+    assert bot.handle(callback(123, "reject")) == "ثبت شد."
+    assert client.get(f"/items/{item}").json()["status"] == "REJECTED"
+    with Session(client.app.state.engine) as session:
+        assert session.scalar(select(Audit)).actor == "telegram:123"
+
+
+def test_today_report_is_read_only(client, monkeypatch):
+    monkeypatch.setattr("studio.api.report_day", lambda _: "2026-11-05")
+    assert client.get("/reports/today").status_code == 404
+    client.post("/reports/prepare")
+    assert client.get("/reports/today").json() == {"day": "2026-11-05", "ideas": []}

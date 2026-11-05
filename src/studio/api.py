@@ -186,6 +186,29 @@ def create_app(database_url=None, token=None, provider=None, metadata=None, feed
                 for i in session.scalars(select(Item).order_by(Item.id.desc()).limit(100))
             ]
 
+    @app.get("/reports/today", dependencies=[Depends(authorized)])
+    def today_report():
+        day = report_day(datetime.now(timezone.utc))
+        with sessions() as session:
+            report = session.get(Report, day) if day else None
+            if not report:
+                raise HTTPException(404, "Report not prepared")
+            return {"day": day, "ideas": json.loads(report.payload)}
+
+    @app.get("/items/{item_id}", dependencies=[Depends(authorized)])
+    def item_details(item_id: int):
+        with sessions() as session:
+            item = get_item(session, item_id)
+            return {
+                "id": item.id,
+                "url": item.url,
+                "status": item.status,
+                "author": item.author,
+                "published_at": item.published_at,
+                "score": item.score,
+                "research": json.loads(item.research) if item.research else None,
+            }
+
     @app.get("/items/{item_id}/duplicates", dependencies=[Depends(authorized)])
     def duplicates(item_id: int):
         with sessions() as session:

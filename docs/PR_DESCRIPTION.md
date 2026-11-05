@@ -10,10 +10,13 @@ Reports become due at 05:00 Asia/Tehran. Repeated preparation and restart do not
 messages; ambiguous sends are held for operator review. No paid calls, model downloads,
 publication, public exposure, deployment or Espadna modifications.
 
-Validation: 63 tests pass, Ruff passes, three SQLite migrations apply, populated-database upgrade
+Validation: 67 tests pass, Ruff passes, three SQLite migrations apply, populated-database upgrade
 preserves data, schema consistency passes, and a real isolated loopback HTTP smoke passes.
-External adapters use mocked integration tests. Live Telegram/YouTube/Ollama, PostgreSQL and
-real scheduled delivery have not been validated. Credentials/model and network review are needed.
+Research adapters use mocked integration tests. Live private Telegram link submission,
+persistence, reply and current-day report delivery were validated in cloud development.
+Inline approval buttons and full idea/today views are added with authorization tests.
+Live YouTube metadata was blocked by proxy 403; Ollama, PostgreSQL and unattended scheduled
+delivery remain unvalidated. No model is installed or selected.
 
 Remaining M1: pre-deadline automatic collection/research, official YouTube discovery/quota,
-inline callbacks and production controls. M2–M4 remain pending. This is not production-ready.
+production controls. M2–M4 remain pending. This is not production-ready.

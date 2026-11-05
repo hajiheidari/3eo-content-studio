@@ -163,7 +163,7 @@ def test_manual_link_to_telegram_report_and_approval(tmp_path, monkeypatch):
             self.sent = []
             self.events = []
 
-        def send(self, user, text):
+        def send(self, user, text, keyboard=None):
             self.sent.append((user, text))
             return str(len(self.sent))
 
