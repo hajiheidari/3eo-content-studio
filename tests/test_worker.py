@@ -28,6 +28,7 @@ class Studio:
 class Telegram:
     def __init__(self):
         self.sent = []
+        self.keyboards = []
         self.events = []
         self.error = None
 
@@ -36,6 +37,7 @@ class Telegram:
 
     def send(self, user, text, keyboard=None):
         self.sent.append((user, text))
+        self.keyboards.append(keyboard)
         if self.error:
             raise self.error
         return "123"
@@ -240,3 +242,30 @@ def test_expired_callback_ack_does_not_drop_authorized_approval(setup):
     assert len(studio.calls) == 1 and len(telegram.sent) == 1
     with sessions() as session:
         assert session.get(BotUpdate, 90).status == "handled"
+
+
+def test_script_review_sends_every_part_and_keyboard_only_at_end(setup):
+    from studio.script_messages import split_telegram
+    from studio.telegram import BotReply
+
+    sessions, studio, telegram = setup
+    worker = Worker(sessions, studio, telegram, {123})
+    text = "سناریو😀" * 1200
+    parts = split_telegram(text)
+    keyboard = {
+        "inline_keyboard": [
+            [{"text": "تأیید", "callback_data": "scriptapprove:1:0123456789abcdef"}]
+        ]
+    }
+    worker.gateway.handle = lambda event: BotReply(parts[0], keyboard, parts=parts)
+    telegram.events = [
+        {
+            "update_id": 91,
+            "message": {"from": {"id": 123}, "chat": {"type": "private"}, "text": "/script 1"},
+        }
+    ]
+    worker.poll()
+    assert "چند دقیقه" in telegram.sent[0][1]
+    assert "".join(message for _, message in telegram.sent[1:]) == text
+    assert all(k is None for k in telegram.keyboards[:-1])
+    assert telegram.keyboards[-1] == keyboard

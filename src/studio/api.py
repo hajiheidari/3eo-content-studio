@@ -16,11 +16,15 @@ from sqlalchemy.orm.exc import StaleDataError
 from .domain import TRANSITIONS, normalize_url, rank, report_day, text_similarity
 from .feeds import FeedReader, feed_url
 from .integrations import LlamaResearch, OllamaResearch, YouTubeMetadata
+from .producer import LocalScriptProvider
+from .producer_api import register_producer
 from .research import Research, UnconfiguredProvider
-from .storage import Audit, Conversation, Delivery, Item, Report, Source, database
+from .storage import Audit, Conversation, Delivery, Item, Report, ScriptDraft, Source, database
 
 
-def create_app(database_url=None, token=None, provider=None, metadata=None, feeds=None):
+def create_app(
+    database_url=None, token=None, provider=None, metadata=None, feeds=None, script_provider=None
+):
     engine, sessions = database(database_url or os.getenv("DATABASE_URL", "sqlite:///./studio.db"))
     secret = token or os.getenv("STUDIO_ADMIN_TOKEN")
     provider = provider or (
@@ -174,7 +178,11 @@ def create_app(database_url=None, token=None, provider=None, metadata=None, feed
             current = session.get(Conversation, actor)
             if not current:
                 raise HTTPException(404, "No active source")
-            return {"item_id": current.item_id, "evidence_kind": current.evidence_kind}
+            return {
+                "item_id": current.item_id,
+                "evidence_kind": current.evidence_kind,
+                "pending_script_id": current.pending_script_id,
+            }
 
     @app.delete("/conversation")
     def reset_conversation(actor=Depends(authorized)):
@@ -190,11 +198,21 @@ def create_app(database_url=None, token=None, provider=None, metadata=None, feed
         with sessions() as session:
             item = get_item(session, body.item_id)
             current = session.get(Conversation, actor)
+            if body.pending_script_id is not None:
+                draft = session.get(ScriptDraft, body.pending_script_id)
+                if not draft or draft.item_id != item.id:
+                    raise HTTPException(409, "Script does not belong to this idea")
             if current:
+                current.pending_script_id = body.pending_script_id
                 current.item_id, current.evidence_kind = item.id, body.evidence_kind
             else:
                 session.add(
-                    Conversation(actor=actor, item_id=item.id, evidence_kind=body.evidence_kind)
+                    Conversation(
+                        actor=actor,
+                        item_id=item.id,
+                        evidence_kind=body.evidence_kind,
+                        pending_script_id=body.pending_script_id,
+                    )
                 )
             session.commit()
         return {"item_id": body.item_id, "evidence_kind": body.evidence_kind}
@@ -462,6 +480,12 @@ def create_app(database_url=None, token=None, provider=None, metadata=None, feed
                 }
             return {"day": day, "ideas": ideas, "duplicate": False}
 
+    register_producer(
+        app,
+        sessions,
+        authorized,
+        script_provider or (LocalScriptProvider() if os.getenv("STUDIO_LOCAL_AI") == "1" else None),
+    )
     return app
 
 
@@ -493,5 +517,6 @@ class EvidenceInput(BaseModel):
 
 
 class ConversationInput(BaseModel):
+    pending_script_id: int | None = Field(default=None, gt=0)
     item_id: int = Field(gt=0)
     evidence_kind: Literal["description", "transcript", "user_text"] = "description"

@@ -3,7 +3,7 @@
 Private, approval-driven Persian SEO research and production system. This branch implements
 the manual-link Scout workflow and private Telegram worker; live integrations require setup.
 See [status](DEVELOPMENT_STATUS.md), [architecture](ARCHITECTURE.md) and [brief](REQUIREMENTS.md).
-Video production and the dashboard are not implemented. No production deployment is authorized.
+Script drafts and revision approval are now implemented; video production and the dashboard are not. No production deployment is authorized.
 
 ## Local development
 Python 3.12+ and uv required. From this repository:
@@ -83,3 +83,11 @@ retry option. Model downloads and activation are explicit, not triggered by user
 The local model and actual Telegram research delivery are now validated in development.
 Use /start for the Persian menu; «ایده جدید» starts a different text source without deleting prior ideas.
 The supported default is Qwen2.5-14B via llama.cpp; see docs/LOCAL_AI.md for resources and limits.
+
+
+## Approved idea → script
+Press «ساخت سناریو» after idea approval, or use /script ITEM_ID. Review the full script and
+storyboard, then approve that exact version or press «درخواست اصلاح» and send notes.
+/scriptview SCRIPT_ID retrieves the cached draft. This does not create a video or publish.
+See [script workflow and limits](docs/SCRIPT_WORKFLOW.md). Local CPU script generation can
+currently take several minutes; progress is acknowledged before inference.

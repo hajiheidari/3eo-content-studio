@@ -3,12 +3,14 @@
 import re
 
 from .reports import format_report, report_keyboard
+from .script_messages import script_review
 
 
 class BotReply(str):
-    def __new__(cls, text, keyboard=None):
+    def __new__(cls, text, keyboard=None, parts=None):
         reply = super().__new__(cls, text)
         reply.keyboard = keyboard
+        reply.parts = parts
         return reply
 
 
@@ -22,6 +24,23 @@ class TelegramGateway:
         if "callback_query" not in update:
             return update.get("message", {})
         query = update["callback_query"]
+        script_action = re.fullmatch(
+            r"(script|scriptview|scriptrevise):([1-9][0-9]{0,18})", query.get("data", "")
+        )
+        script_approval = re.fullmatch(
+            r"scriptapprove:([1-9][0-9]{0,18}):([a-f0-9]{16})", query.get("data", "")
+        )
+        if script_action or script_approval:
+            command = (
+                f"/approvescript {script_approval[1]} {script_approval[2]}"
+                if script_approval
+                else f"/{ {'script': 'script', 'scriptview': 'scriptview', 'scriptrevise': 'revisescript'}[script_action[1]] } {script_action[2]}"
+            )
+            return {
+                "from": query.get("from", {}),
+                "chat": query.get("message", {}).get("chat", {}),
+                "text": command,
+            }
         match = re.fullmatch(
             r"(approve|reject|save|research|analyze|description|transcript|usertext):([1-9][0-9]{0,18})",
             query.get("data", ""),
@@ -78,6 +97,39 @@ class TelegramGateway:
             report_keyboard([idea]),
         )
 
+    def script(self, item_id, actor):
+        response = self.studio.post(f"/items/{item_id}/scripts", headers=actor)
+        if response.status_code != 200:
+            return "ساخت سناریو انجام نشد؛ ایده باید تأیید شده و سرویس نویسنده آماده باشد. تأیید ایده از بین نرفته است."
+        return self.script_reply(response.json())
+
+    def script_reply(self, data):
+        if data["state"] == "generating":
+            return "ساخت سناریو در جریان است؛ درخواست دیگری ساخته نمی‌شود."
+        if not data.get("content"):
+            return "این سناریو هنوز آماده نیست."
+        parts, keyboard = script_review(data)
+        return BotReply(parts[0], keyboard, parts=parts)
+
+    def progress_message(self, update):
+        message = self.authorize(update)
+        text = message.get("text", "").strip()
+        if text.startswith("/script "):
+            return (
+                "در حال آماده‌سازی سناریو برای بازبینی هستم؛ این مرحله ممکن است چند دقیقه طول بکشد."
+            )
+        if text and not text.startswith(("/", "https://")):
+            if 80 <= len(text) <= 12000:
+                return "متن دریافت شد؛ در حال آماده‌سازی نتیجه هستم. آن را همین‌جا می‌فرستم."
+            if 5 <= len(text) <= 1000:
+                user = message["from"]["id"]
+                current = self.studio.get(
+                    "/conversation", headers={"X-Studio-Actor": f"telegram:{user}"}
+                )
+                if current.status_code == 200 and current.json().get("pending_script_id"):
+                    return "درخواست اصلاح دریافت شد؛ نسخهٔ تازه را آماده می‌کنم."
+        return None
+
     def handle(self, update: dict) -> str:
         message = self.authorize(update)
         actor = {"X-Studio-Actor": f"telegram:{message['from']['id']}"}
@@ -98,6 +150,44 @@ class TelegramGateway:
                     "resize_keyboard": True,
                 },
             )
+        if text.startswith("/script "):
+            item_id = text.removeprefix("/script ").strip()
+            return (
+                self.script(int(item_id), actor)
+                if item_id.isdigit()
+                else "شناسه عددی ایده لازم است."
+            )
+        if text.startswith(("/scriptview ", "/revisescript ", "/approvescript ")):
+            parts = text.split()
+            if len(parts) < 2 or not parts[1].isdigit():
+                return "شناسه سناریو مشخص نیست."
+            response = self.studio.get(f"/scripts/{parts[1]}", headers=actor)
+            if response.status_code != 200:
+                return "سناریو پیدا نشد."
+            data = response.json()
+            if parts[0] == "/scriptview":
+                return self.script_reply(data)
+            if parts[0] == "/revisescript":
+                self.studio.put(
+                    "/conversation",
+                    json={"item_id": data["item_id"], "pending_script_id": data["id"]},
+                    headers=actor,
+                ).raise_for_status()
+                return "تغییرات موردنظرت را در پیام بعد بنویس؛ نسخهٔ تازه برای بررسی ساخته می‌شود و تأیید قبلی به آن منتقل نمی‌شود."
+            if (
+                len(parts) != 3
+                or not data.get("content_hash")
+                or parts[2] != data["content_hash"][:16]
+            ):
+                return "دکمه با محتوای سناریو مطابقت ندارد؛ نسخهٔ فعلی را دوباره ببین."
+            result = self.studio.post(
+                f"/scripts/{data['id']}/approve",
+                json={"content_hash": data["content_hash"]},
+                headers=actor,
+            )
+            if result.status_code != 200:
+                return "این نسخه دیگر در انتظار تأیید نیست؛ نسخهٔ تازه را بررسی کن."
+            return "همین نسخهٔ سناریو تأیید شد. هیچ انتشار یا تولید صدایی انجام نشده است؛ مرحلهٔ دریافت و پردازش رسانه هنوز فعال نشده است."
         if text.startswith("https://"):
             response = self.studio.post("/items", json={"url": text}, headers=actor)
             if response.status_code != 200:
@@ -198,10 +288,36 @@ class TelegramGateway:
                 return "پژوهش بیشتر ثبت شد. متن تکمیلی را بفرست؛ به همین ایده وصل می‌شود. اگر رونوشت است نوع متن را انتخاب کن."
             if response.status_code == 409:
                 existing = self.studio.get(f"/items/{item_id}", headers=actor)
+                if (
+                    existing.status_code == 200
+                    and status == "IDEA_APPROVED"
+                    and existing.json()["status"]
+                    in {
+                        "SCRIPT_GENERATING",
+                        "SCRIPT_DRAFT",
+                        "SCRIPT_APPROVED",
+                        "REVISION_REQUESTED",
+                    }
+                ):
+                    return BotReply(
+                        "ایده قبلاً تأیید شده و وارد مرحلهٔ سناریو شده است؛ نیازی به تأیید دوبارهٔ ایده نیست.",
+                        {
+                            "inline_keyboard": [
+                                [{"text": "دیدن سناریو", "callback_data": f"script:{item_id}"}]
+                            ]
+                        },
+                    )
                 if existing.status_code == 200 and existing.json()["status"] == status:
                     return f"این وضعیت برای ایدهٔ #{item_id} قبلاً ثبت شده است؛ نیازی به کلیک دوباره نیست."
             if response.status_code == 200 and status == "IDEA_APPROVED":
-                return f"ایدهٔ #{item_id} تأیید شد و در فهرست ایده‌های تأییدشده قرار گرفت. این تأیید، انتشار یا تولید خودکار ویدئو را شروع نمی‌کند؛ بخش تولید هنوز آماده نیست."
+                return BotReply(
+                    f"ایدهٔ #{item_id} تأیید شد. برای آماده‌سازی پیش‌نویس، «ساخت سناریو» را بزن. هیچ انتشار خودکاری انجام نمی‌شود.",
+                    {
+                        "inline_keyboard": [
+                            [{"text": "ساخت سناریو", "callback_data": f"script:{item_id}"}]
+                        ]
+                    },
+                )
             return "ثبت شد." if response.status_code == 200 else "تغییر وضعیت مجاز نیست."
         if text == "/today":
             response = self.studio.get("/reports/today")
@@ -236,6 +352,24 @@ class TelegramGateway:
                 or "ایده‌ای ثبت نشده است."
             )
         if text and not text.startswith("/"):
+            current = self.studio.get("/conversation", headers=actor)
+            context = current.json() if current.status_code == 200 else {}
+            if context.get("pending_script_id"):
+                if not 5 <= len(text) <= 1000:
+                    return "توضیح اصلاح را بین ۵ تا ۱۰۰۰ نویسه بنویس."
+                revised = self.studio.post(
+                    f"/scripts/{context['pending_script_id']}/revise",
+                    json={"notes": text},
+                    headers=actor,
+                )
+                if revised.status_code != 200:
+                    return "این نسخه قابل اصلاح نیست؛ نسخهٔ فعلی را بررسی کن."
+                self.studio.put(
+                    "/conversation",
+                    json={"item_id": context["item_id"], "pending_script_id": None},
+                    headers=actor,
+                ).raise_for_status()
+                return self.script(context["item_id"], actor)
             if len(text) < 80:
                 return "این متن برای پژوهش کافی نیست و ممکن است فقط عنوان باشد. توضیحات ویدئو، رونوشت مجاز یا متن مستقلِ دست‌کم ۸۰ نویسه‌ای را بفرست؛ لازم نیست دستور بنویسی."
             if len(text) > 12000:

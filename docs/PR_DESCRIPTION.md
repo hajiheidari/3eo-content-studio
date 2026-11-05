@@ -15,7 +15,7 @@ four threads/one slot. Suggestions require a concrete topic/input/action/compari
 repeated claims/generic fields are rejected. Evidence boundaries come from stored input.
 Model artifacts/DB/secrets remain outside Git. No paid API, production or Espadna changes.
 
-Validation: 86 tests, Ruff, migration/schema consistency and real loopback smoke pass.
+Validation: 97 tests, Ruff, migration/schema consistency and real loopback smoke pass.
 Actual item 1 description → live model/API → stored draft → Telegram result/keyboard passed
 (117.5s, score 53/confidence 0.4). The founder later confirmed approval in chat; after an environment-recreation outage it was reconciled with an admin audit and a delivered Telegram confirmation. Repeated setup on the
 running model passes after fixing native-library re-extraction. Observed model RSS ~16 GiB;
@@ -32,3 +32,12 @@ Fix approval silence after outages: best-effort Telegram callback acknowledgemen
 abort an authorized action; repeat clicks report the existing status. Two regressions pass.
 Ephemeral snapshot restoration stops services, so restarting the development processes was
 necessary; no always-on hosting or production deployment is claimed.
+
+
+M2 entry: add original Persian script/storyboard generation from approved ideas, immutable
+revisions with frozen sources, exact-hash/latest-revision approval and natural Telegram revision
+notes. Rendering/media are still pending. Reservations prevent duplicate inference and recover
+after interruption; model failure retains the approved idea. Review messages are Unicode-safe
+and complete, with approval controls only at the end. Real item 1 → stored 55-second draft
+(ID 2/revision 2) → Telegram review delivery passed (384.3s); a duplicate request reused it in
+0.009s. Founder script approval is pending. 97 tests and revision 0005 schema checks pass.

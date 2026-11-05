@@ -9,7 +9,7 @@ uv run alembic upgrade head
 uv run alembic check
 ```
 
-86 tests pass. Coverage includes URL/SSRF validation, canonical/advisory duplicates,
+97 tests pass. Coverage includes URL/SSRF validation, canonical/advisory duplicates,
 transcript/evidence gating, research validation, source-context isolation, plain-text intake,
 standalone text, new-idea reset, provider failures, concrete demonstration plan, scoring,
 optimistic approval writes/audits, safe metadata/feeds and response caps, Telegram sender
@@ -39,3 +39,11 @@ Approval incident regressions: expired Telegram callback acknowledgement must no
 the business action; repeated approval must create one audit transition and a clear response.
 Live reconciliation after the founder's chat confirmation verified IDEA_APPROVED and actual
 Telegram confirmation delivery. No synthetic callback or publication was claimed.
+
+
+Producer tests now cover approved-only generation, failed-model state restoration, concurrent
+duplicate reservation, interruption lease recovery, frozen revisions, wrong/stale hash approval,
+script-stage bypass prevention, Telegram revision notes and full Unicode multipart review.
+Live item 1 generated a stored 55-second script draft with three hooks and five scenes; its
+review/approval keyboard was delivered. Generation took 384.3s after a timeout-driven reduction
+in output verbosity. No actual script approval, recording, rendering or export is claimed.

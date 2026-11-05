@@ -99,3 +99,20 @@ class Conversation(Base):
     actor: Mapped[str] = mapped_column(String(100), primary_key=True)
     item_id: Mapped[int] = mapped_column(ForeignKey("source_items.id"))
     evidence_kind: Mapped[str] = mapped_column(String(30), default="description")
+    pending_script_id: Mapped[int | None] = mapped_column()
+
+
+class ScriptDraft(Base):
+    __tablename__ = "scripts"
+    __table_args__ = (UniqueConstraint("item_id", "revision"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("source_items.id"))
+    revision: Mapped[int] = mapped_column()
+    state: Mapped[str] = mapped_column(String(30))
+    snapshot: Mapped[str] = mapped_column(Text)
+    content: Mapped[str | None] = mapped_column(Text)
+    content_hash: Mapped[str | None] = mapped_column(String(64))
+    revision_notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )

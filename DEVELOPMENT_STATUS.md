@@ -19,7 +19,7 @@ CPU runtime llama.cpp b12129 is verified and private. Four threads, one slot, 81
 See docs/LOCAL_AI.md for complete setup and startup. Network/model blockers are now resolved.
 
 ## Evidence
-86 tests pass; Ruff and SQLite migration/schema consistency pass (revision 0004).
+97 tests pass; Ruff and SQLite migration/schema consistency pass (revision 0005).
 Tests cover URL/SSRF/body limits, metadata, safe feeds, source/context isolation, plain-text
 intake, provider schemas/failures, research quality gates, scoring, audits, callbacks, Telegram
 authorization, timezone, outbox/restart behavior, existing-data migrations and artifact integrity.
@@ -49,7 +49,7 @@ use still requires founder fact checking and explicit idea approval; no automati
 Architecture, costs, security and deployment plan are documented. Production Ubuntu access
 and infrastructure inspection are still absent. No production or Espadna Sim commands were
 run. Runtime is cloud development only; processes must restart after a snapshot restore.
-M2–M4 remain pending: script/producer, media/audio/video/subtitles, Remotion, dashboard,
+M2–M4 remain pending: remaining producer/media/audio/video/subtitles, Remotion, dashboard,
 full hardening and controlled deployment. The entire original project is not complete.
 
 
@@ -64,7 +64,24 @@ Fixed a second failure mode: expired answerCallbackQuery/acknowledgement errors 
 skip the authorized approval action. Repeated approvals now return a clear already-recorded
 message with one transition. Approval messages explain that script/video generation remains
 unimplemented. Model, API and private worker were restarted only in this development machine.
-86 tests pass, including expired callback and repeated-approval regressions. Continuous bot
+97 tests pass, including expired callback and repeated-approval regressions. Continuous bot
 availability still requires a persistent runtime; this ephemeral cloud task is not a permanent
 server deployment. Production deployment remains blocked on infrastructure inspection and
 explicit founder approval. Publishing/restoring the dev snapshot requires service restart.
+
+
+## M2 entry implemented: script and revision approval
+Added versioned script generation from approved research with frozen source context, three
+hooks, narration, five timed shots, recording/motion instructions, fact-check list, CTA/caption,
+hashtags and trusted source references. Exact content-hash/latest-revision approval is separate
+from idea approval. Revisions preserve prior content and reset the approval gate. Duplicate
+requests reuse one reservation/draft; failed inference preserves the approved idea. Interrupted
+reservations recover after a 15-minute lease. Telegram supports multipart review, revision
+notes as the next message, progress receipts and clear old-button responses.
+
+Real item 1 → script ID 2/revision 2 (55 seconds) → persisted draft → confirmed private Telegram
+delivery succeeded. First attempt timed out; tightened generation bounds completed in 384.3s.
+Draft approval remains pending. A repeated request reused ID 2 in 0.009s. 97 tests pass and
+schema check is clean at 0005. See docs/SCRIPT_WORKFLOW.md. This is the script portion of M2,
+not the complete producer: uploads, audio processing, subtitles, rendering and export remain
+unimplemented. No synthesized voice, public content, production or Espadna changes occurred.

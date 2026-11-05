@@ -124,19 +124,18 @@ class Worker:
                                 "Callback acknowledgement unavailable; processing authorized action",
                                 flush=True,
                             )
-                    incoming = self.gateway.message(event).get("text", "")
-                    if 80 <= len(incoming) <= 12000 and not incoming.startswith(("/", "https://")):
-                        self.telegram.send(
-                            self.gateway.recipient(event),
-                            "متن دریافت شد؛ در حال پژوهش هستم. نتیجه را همین‌جا می‌فرستم.",
-                        )
+                    progress = self.gateway.progress_message(event)
+                    if progress:
+                        self.telegram.send(self.gateway.recipient(event), progress)
                     reply = self.gateway.handle(event)
                     recipient = self.gateway.recipient(event)
                     keyboard = getattr(reply, "keyboard", None)
-                    if keyboard:
-                        self.telegram.send(recipient, str(reply), keyboard=keyboard)
-                    else:
-                        self.telegram.send(recipient, reply)
+                    parts = getattr(reply, "parts", None) or [str(reply)]
+                    for index, part in enumerate(parts):
+                        if keyboard and index == len(parts) - 1:
+                            self.telegram.send(recipient, part, keyboard=keyboard)
+                        else:
+                            self.telegram.send(recipient, part)
                 except PermissionError:
                     state = "ignored"
                 except Exception:
@@ -251,7 +250,7 @@ def main():
         try:
             with httpx.Client(
                 base_url="http://127.0.0.1:8000",
-                timeout=480,
+                timeout=720,
                 headers={"Authorization": f"Bearer {os.environ['STUDIO_ADMIN_TOKEN']}"},
             ) as studio:
                 worker = Worker(
