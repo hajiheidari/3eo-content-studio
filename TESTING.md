@@ -1,40 +1,35 @@
 # Validation
-From this checkout run:
+From this checkout, with only a development DATABASE_URL:
 
 ```sh
 uv sync --frozen
-uv run pytest -q
-uv run ruff check src tests migrations
-uv run alembic upgrade head
+STUDIO_LOCAL_AI=0 STUDIO_OLLAMA_MODEL= uv run pytest -q
+uv run ruff check src tests scripts migrations
 uv run alembic upgrade head
 uv run alembic check
 ```
 
-Use only development DATABASE_URL. 79 tests currently pass. They cover private API auth,
-URL/SSRF validation, canonical and near-duplicates, transcript gating, research schema,
-mocked local-model integration, score/approval/audit flow, stale writes, safe official feeds,
-metadata failures, body caps, Telegram authorization and command handling, Tehran timing,
-durable polling offsets, uncertain delivery handling and rate-limit retries. The full mocked
-manual-link → transcript → research → Telegram report → approval path executes. Migration tests
-upgrade populated revision 0001 to 0003, repeat the upgrade and check schema consistency.
+84 tests pass. Coverage includes URL/SSRF validation, canonical/advisory duplicates,
+transcript/evidence gating, research validation, source-context isolation, plain-text intake,
+standalone text, new-idea reset, provider failures, concrete demonstration plan, scoring,
+optimistic approval writes/audits, safe metadata/feeds and response caps, Telegram sender
+checks/callbacks, Tehran timing, durable update/report state, uncertain delivery handling,
+rate-limit retries, populated DB upgrade, model checksums and non-overwriting runtime reuse.
+External APIs/model generation are mocked in this suite; tests do not call paid services.
+One upstream Starlette/httpx TestClient deprecation warning remains.
 
-A separate real loopback server smoke test used a fresh migrated temporary database and a
-generated ephemeral token: health, persisted link, missing-transcript rejection and invalid-token
-rejection passed. No secrets were printed; the temporary server was stopped afterward.
+## Actual development acceptance
+- Real loopback HTTP server: schema health, persisted link, transcript gate and auth passed.
+- Dedicated Telegram getMe and founder-submitted YouTube URL/reply passed.
+- Official CPU runtime and all three Qwen2.5-14B GGUF shards matched pinned SHA-256.
+- Local model/API readiness passed. Repeating installation while the model ran kept it healthy.
+- Item 1's stored public description generated actual research without a supplied answer:
+  HTTP 200, RESEARCHED, 117.5 seconds, score 53/confidence 0.4.
+- The actual persisted draft and approval keyboard were delivered to the allowlisted user.
+  No founder approval or publication was simulated.
 
-Live development validation on 2026-11-05: Telegram getMe succeeded, a founder-submitted
-YouTube URL was persisted and its private bot reply was confirmed. A current-day report
-outbox record is sent. This verifies delivery during a test session, not an unattended 05:00
-run or continuous uptime. No live inline approval callback has been exercised.
-The YouTube metadata attempt failed at the proxy with 403; no source analysis is claimed.
-No paid service, live model inference or production connection was used. PostgreSQL, research
-quality, official discovery quotas and unattended scheduling remain unverified. One upstream Starlette TestClient/httpx deprecation warning remains.
-The full media/script/render/export workflow is not implemented or tested.
-
-
-Conversational intake tests cover link → plain description → schema-constrained local-provider
-response → stored research → callback approval, independent text, title rejection, per-user
-context isolation, persistent type selection, retained evidence after model failure, evidence
-confidence caps and artifact checksum enforcement. Revision 0004 is included in populated-DB
-upgrade checks. These use mocked inference; model weights/download and real inference are
-still blocked by network configuration. They do not establish live AI quality.
+Smaller models were rejected after weak drafts; they were not presented as accepted content.
+The final plan is structured as topic/input/action/comparison; it remains a founder-reviewed
+hypothesis. Live YouTube metadata failed at the proxy with 403, so no watched-video or full
+transcript claim is made. PostgreSQL, unattended scheduling under load, broad editorial
+quality and the full script/media/render/export workflow remain unvalidated or unimplemented.

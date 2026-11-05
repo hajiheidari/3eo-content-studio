@@ -16,8 +16,22 @@ LOCAL = ROOT / ".local"
 VERSION = "b12129"
 RUNTIME = f"https://github.com/ggml-org/llama.cpp/releases/download/{VERSION}/llama-{VERSION}-bin-ubuntu-x64.tar.gz"
 RUNTIME_SHA = "a6463c212b8db508cb897675159cccf7f1f50d9380df00dc33a77e2863feff23"
-MODEL_REPO = "Qwen/Qwen3-4B-GGUF"
-MODEL_FILE = "Qwen3-4B-Q4_K_M.gguf"
+MODEL_REPO = "Qwen/Qwen2.5-14B-Instruct-GGUF"
+MODEL_REVISION = "b466e1f8c07172155743e8e1307507d8a4f91fbd"
+MODEL_FILES = [
+    (
+        "qwen2.5-14b-instruct-q4_k_m-00001-of-00003.gguf",
+        "a09ea5e7b1eafb1b30b241726c3cc3c905c96f14ad41e246ffa5f44e53904f68",
+    ),
+    (
+        "qwen2.5-14b-instruct-q4_k_m-00002-of-00003.gguf",
+        "21b9457d079680d284e90ef69607c4b2d8ef64a09d4729cb7b5e1357bdba41ae",
+    ),
+    (
+        "qwen2.5-14b-instruct-q4_k_m-00003-of-00003.gguf",
+        "c8d37006760a387a35216e070e6664d7da927f10be8eb870fef2e3d4833d9976",
+    ),
+]
 
 
 def download(client, url, destination, expected, max_bytes):
@@ -45,6 +59,35 @@ def download(client, url, destination, expected, max_bytes):
         temporary.unlink(missing_ok=True)
 
 
+def extract_runtime(archive, runtime_dir):
+    """Never replace native libraries while a server may have them memory-mapped."""
+    runtime_dir.mkdir(exist_ok=True)
+    with tarfile.open(archive) as bundle:
+        files = [member for member in bundle.getmembers() if member.isfile()]
+        intact = True
+        for member in files:
+            target = runtime_dir / member.name
+            if not target.resolve().is_relative_to(runtime_dir.resolve()):
+                raise RuntimeError("Unsafe runtime archive path")
+            if not target.is_file():
+                intact = False
+                break
+            with target.open("rb") as installed, bundle.extractfile(member) as original:
+                if (
+                    hashlib.file_digest(installed, "sha256").digest()
+                    != hashlib.file_digest(original, "sha256").digest()
+                ):
+                    intact = False
+                    break
+        if intact:
+            return
+        if any(runtime_dir.iterdir()):
+            raise RuntimeError(
+                "Existing runtime differs; stop its process and move that runtime directory aside before repair"
+            )
+        bundle.extractall(runtime_dir, filter="data")
+
+
 def main():
     LOCAL.mkdir(exist_ok=True)
     (LOCAL / "models").mkdir(exist_ok=True)
@@ -52,39 +95,22 @@ def main():
         archive = LOCAL / f"llama-{VERSION}.tar.gz"
         download(client, RUNTIME, archive, RUNTIME_SHA, 150 * 1024 * 1024)
         runtime_dir = LOCAL / "llama"
-        runtime_dir.mkdir(exist_ok=True)
-        with tarfile.open(archive) as bundle:
-            bundle.extractall(runtime_dir, filter="data")
-        # Pin the selected official repository revision, then obtain authoritative LFS SHA.
-        response = client.get(f"https://huggingface.co/api/models/{MODEL_REPO}")
-        response.raise_for_status()
-        revision = response.json()["sha"]
-        details = client.get(
-            f"https://huggingface.co/api/models/{MODEL_REPO}/revision/{revision}",
-            params={"blobs": "true"},
-        )
-        details.raise_for_status()
-        model = next(
-            entry for entry in details.json()["siblings"] if entry["rfilename"] == MODEL_FILE
-        )
-        checksum = model["lfs"]["sha256"]
-        if len(checksum) != 64:
-            raise RuntimeError("Model checksum unavailable")
-        destination = LOCAL / "models" / MODEL_FILE
-        download(
-            client,
-            f"https://huggingface.co/{MODEL_REPO}/resolve/{revision}/{MODEL_FILE}",
-            destination,
-            checksum,
-            4 * 1024**3,
-        )
+        extract_runtime(archive, runtime_dir)
+        # Official repository revision and every LFS SHA are pinned and verified.
+        for name, checksum in MODEL_FILES:
+            download(
+                client,
+                f"https://huggingface.co/{MODEL_REPO}/resolve/{MODEL_REVISION}/{name}",
+                LOCAL / "models" / name,
+                checksum,
+                5 * 1024**3,
+            )
         (LOCAL / "model-manifest.json").write_text(
             json.dumps(
                 {
                     "repo": MODEL_REPO,
-                    "revision": revision,
-                    "file": MODEL_FILE,
-                    "sha256": checksum,
+                    "revision": MODEL_REVISION,
+                    "files": [{"file": name, "sha256": sha} for name, sha in MODEL_FILES],
                     "runtime_version": VERSION,
                     "runtime_sha256": RUNTIME_SHA,
                 },

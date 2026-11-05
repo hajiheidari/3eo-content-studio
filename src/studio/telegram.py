@@ -82,6 +82,22 @@ class TelegramGateway:
         message = self.authorize(update)
         actor = {"X-Studio-Actor": f"telegram:{message['from']['id']}"}
         text = message.get("text", "").strip()
+        text = {"ایده جدید": "/new", "فهرست ایده‌ها": "/ideas", "گزارش امروز": "/today"}.get(
+            text, text
+        )
+        if text in {"/start", "/new"}:
+            if text == "/new":
+                self.studio.delete("/conversation", headers=actor).raise_for_status()
+            return BotReply(
+                "لینک یا متن مستقلِ قابل استفاده‌ات را بفرست. بعد از لینک، توضیحات یا رونوشت را در پیام بعدی بفرست تا پژوهش شود. برای شروع موضوع دیگری، «ایده جدید» را بزن.",
+                {
+                    "keyboard": [
+                        [{"text": "ایده جدید"}, {"text": "فهرست ایده‌ها"}],
+                        [{"text": "گزارش امروز"}],
+                    ],
+                    "resize_keyboard": True,
+                },
+            )
         if text.startswith("https://"):
             response = self.studio.post("/items", json={"url": text}, headers=actor)
             if response.status_code != 200:

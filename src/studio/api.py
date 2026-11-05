@@ -176,6 +176,15 @@ def create_app(database_url=None, token=None, provider=None, metadata=None, feed
                 raise HTTPException(404, "No active source")
             return {"item_id": current.item_id, "evidence_kind": current.evidence_kind}
 
+    @app.delete("/conversation")
+    def reset_conversation(actor=Depends(authorized)):
+        with sessions() as session:
+            current = session.get(Conversation, actor)
+            if current:
+                session.delete(current)
+                session.commit()
+        return {"status": "ready_for_new_idea"}
+
     @app.put("/conversation")
     def set_conversation(body: ConversationInput, actor=Depends(authorized)):
         with sessions() as session:
@@ -379,14 +388,14 @@ def create_app(database_url=None, token=None, provider=None, metadata=None, feed
                     503, "Research provider unavailable; submit reviewed research"
                 ) from None
             if item.evidence_kind in {"description", "feed_excerpt", "user_text"}:
-                result.limitations = list(
-                    dict.fromkeys(
-                        result.limitations
-                        + [
-                            "این پژوهش فقط بر متن ارسالی استوار است؛ ویدئو یا مقالهٔ کامل بررسی نشده و ادعاها مستقلاً تأیید نشده‌اند."
-                        ]
-                    )
-                )
+                # Evidence boundaries come from stored input type, not model world knowledge.
+                result.limitations = [
+                    "این پژوهش فقط بر متن ارسالی استوار است؛ ویدئو یا مقالهٔ کامل بررسی نشده و ادعاها مستقلاً تأیید نشده‌اند."
+                ]
+                if item.author is None:
+                    result.limitations.append("نام نویسنده به‌صورت مستقل تأیید نشده است.")
+                if item.published_at is None:
+                    result.limitations.append("تاریخ انتشار منبع مشخص نیست.")
                 result.confidence = (
                     min(result.confidence, 0.5) if result.confidence is not None else None
                 )

@@ -31,6 +31,17 @@ def output():
     )
 
 
+def draft_output():
+    data = output()
+    data["angle_fa"] = {
+        "topic": "نیت جست‌وجو",
+        "input": "دو عبارت آموزشی و خرید فارسی",
+        "action": "نتایج هر عبارت را جدا بررسی کن و نوع صفحه غالب را یادداشت کن.",
+        "comparison": "تفاوت نوع صفحه‌ها و نیاز کاربر",
+    }
+    return data
+
+
 @pytest.fixture
 def setup(tmp_path):
     calls = []
@@ -40,7 +51,9 @@ def setup(tmp_path):
         return httpx.Response(
             200,
             json={
-                "choices": [{"finish_reason": "stop", "message": {"content": json.dumps(output())}}]
+                "choices": [
+                    {"finish_reason": "stop", "message": {"content": json.dumps(draft_output())}}
+                ]
             },
         )
 
@@ -73,8 +86,8 @@ def test_link_then_plain_description_runs_analysis_and_approval(setup):
     item = client.get("/items/1").json()
     assert item["status"] == "RESEARCHED" and item["evidence_kind"] == "description"
     assert item["research"]["confidence"] == 0.5
-    assert "ویدئو یا مقالهٔ کامل بررسی نشده" in item["research"]["limitations"][-1]
-    source = calls[0]["messages"][1]["content"]
+    assert "ویدئو یا مقالهٔ کامل بررسی نشده" in item["research"]["limitations"][0]
+    source = calls[0]["messages"][-1]["content"]
     assert "description" in source and TEXT in source
     assert calls[0]["response_format"]["type"] == "json_schema"
     assert (
@@ -186,3 +199,61 @@ def test_evidence_type_selection_is_persistent(setup):
     # A fresh gateway instance after restart uses the saved conversation type.
     TelegramGateway({123}, client).handle(message(123, TEXT))
     assert client.get("/items/1").json()["evidence_kind"] == "transcript"
+
+
+def test_repetitive_claims_fail_research_validation():
+    from studio.research import Research
+
+    data = output()
+    data["claims_to_verify"] = ["ادعای تکراری", "ادعای تکراری"]
+    with pytest.raises(ValueError, match="distinct"):
+        Research.model_validate(data)
+
+
+def test_same_statement_across_fields_is_rejected():
+    from studio.research import Research
+
+    data = output()
+    data["angle_fa"] = data["summary_fa"]
+    with pytest.raises(ValueError, match="repeat"):
+        Research.model_validate(data)
+
+
+def test_description_limits_are_derived_from_actual_evidence(tmp_path):
+    from studio.research import Research
+
+    class Provider:
+        def analyze(self, text, url):
+            data = output()
+            data["limitations"] = ["یک ادعای ساختگی درباره میزان استفاده از فناوری"]
+            return Research.model_validate(data)
+
+    app = create_app(f"sqlite:///{tmp_path}/bounds.db", token="test", provider=Provider())
+    Base.metadata.create_all(app.state.engine)
+    with TestClient(app, headers={"Authorization": "Bearer test"}) as client:
+        item = client.post(
+            "/items/text",
+            json={
+                "text": TEXT,
+                "kind": "description",
+                "provenance": "User supplied public description",
+            },
+        ).json()["id"]
+        assert client.post(f"/items/{item}/research").status_code == 200
+        result = client.get(f"/items/{item}").json()["research"]
+        assert all("ساختگی" not in limitation for limitation in result["limitations"])
+        assert any(
+            "ویدئو یا مقالهٔ کامل بررسی نشده" in limitation for limitation in result["limitations"]
+        )
+    app.state.engine.dispose()
+
+
+def test_new_idea_menu_resets_context_without_deleting_sources(setup):
+    client, calls = setup
+    bot = TelegramGateway({123}, client)
+    bot.handle(message(123, "https://youtu.be/abcdefghijk"))
+    reply = bot.handle(message(123, "ایده جدید"))
+    assert reply.keyboard["keyboard"]
+    bot.handle(message(123, TEXT))
+    assert client.get("/items/1").json()["status"] == "DISCOVERED"
+    assert client.get("/items/2").json()["evidence_kind"] == "user_text"

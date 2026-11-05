@@ -2,7 +2,7 @@
 
 from typing import Protocol
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .domain import WEIGHTS
 
@@ -26,6 +26,28 @@ class Research(BaseModel):
         if not any("\u0600" <= c <= "\u06ff" for c in value):
             raise ValueError("Persian text required")
         return value
+
+    @field_validator("claims_to_verify", "limitations")
+    @classmethod
+    def distinct_points(cls, value):
+        normalized = [" ".join(v.split()).casefold() for v in value]
+        if any(not v for v in normalized) or len(set(normalized)) != len(normalized):
+            raise ValueError("Evidence points must be nonempty and distinct")
+        return value
+
+    @model_validator(mode="after")
+    def reject_repetitive_output(self):
+        fields = [
+            self.summary_fa,
+            self.angle_fa,
+            self.why_it_matters_fa,
+            self.tool_connection_fa,
+            self.recommended_format_fa,
+        ]
+        normalized = [" ".join(value.split()).casefold() for value in fields if value]
+        if len(normalized) != len(set(normalized)):
+            raise ValueError("Research fields must not repeat the same generic statement")
+        return self
 
     @field_validator("criteria")
     @classmethod

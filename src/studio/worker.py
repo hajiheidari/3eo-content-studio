@@ -78,7 +78,7 @@ class TelegramAPI:
                 "link_preview_options": {"is_disabled": True},
                 **(
                     {"reply_markup": keyboard}
-                    if keyboard and keyboard.get("inline_keyboard")
+                    if keyboard and (keyboard.get("inline_keyboard") or keyboard.get("keyboard"))
                     else {}
                 ),
             },
@@ -116,6 +116,12 @@ class Worker:
                     self.gateway.authorize(event)
                     if "callback_query" in event:
                         self.telegram.answer_callback(event["callback_query"]["id"])
+                    incoming = self.gateway.message(event).get("text", "")
+                    if 80 <= len(incoming) <= 12000 and not incoming.startswith(("/", "https://")):
+                        self.telegram.send(
+                            self.gateway.recipient(event),
+                            "متن دریافت شد؛ در حال پژوهش هستم. نتیجه را همین‌جا می‌فرستم.",
+                        )
                     reply = self.gateway.handle(event)
                     recipient = self.gateway.recipient(event)
                     keyboard = getattr(reply, "keyboard", None)
@@ -237,7 +243,7 @@ def main():
         try:
             with httpx.Client(
                 base_url="http://127.0.0.1:8000",
-                timeout=300,
+                timeout=480,
                 headers={"Authorization": f"Bearer {os.environ['STUDIO_ADMIN_TOKEN']}"},
             ) as studio:
                 worker = Worker(

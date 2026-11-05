@@ -1,76 +1,71 @@
-# Complete the private automatic research path
+# Private automatic research: verified development setup
 
-The application now binds the next plain-text message to the sender's selected source,
-classifies it as description/transcript/user text, calls the research provider, validates and
-stores the Persian result, and returns approval buttons. A standalone long text also works.
-A title alone is not treated as a transcript. Pending text survives provider outages and
-conversation context survives restarts. No publication occurs on approval.
+The active CPU model is official Qwen/Qwen2.5-14B-Instruct-GGUF Q4_K_M, served by llama.cpp
+b12129 on 127.0.0.1:8081. All three GGUF shards and the CPU runtime are SHA-256 verified.
+Pinned model revision: b466e1f8c07172155743e8e1307507d8a4f91fbd. Script constants and ignored
+.local/model-manifest.json record every shard digest. Model license: Apache-2.0. No paid API.
 
-## Actual prerequisite
-A language model is not yet installed. Hugging Face downloads currently fail with proxy
-403. The environment draft adds huggingface.co, *.hf.co (official model CDNs) and
-cdn-lfs.huggingface.co while preserving prior domain rules. Review/save and publish the
-**development environment** configuration to apply access. This is not server deployment.
-No API key or paid provider is needed for this CPU option. No new mandatory model variable
-has been added to the settings form.
-
-## Reproducible free CPU option
-Available development resources at inspection: 5 CPUs, ~33 GiB free RAM, ~60 GiB disk.
-Use Qwen/Qwen3-4B-GGUF Q4_K_M, served privately by llama.cpp b12129. Binary and weights
-are fetched from official project repositories over verified TLS; both require authoritative
-SHA-256 verification. The CPU runtime has already been downloaded and its digest verified.
-Actual model download, startup and Persian quality/latency acceptance remain unverified.
-No automatic model download occurs on API import or when the bot receives a message.
-
-From the project directory, explicitly run:
+## Reproduce
+Python 3.12+/uv, ~9 GB model disk plus installation space, and sufficient memory required.
+The development machine has 5 visible CPUs/~33 GiB RAM. Observed model RSS ~16 GiB;
+production requirements are NOT inferred from this cloud machine. CPU inference is slow.
 
 ```sh
+uv sync --frozen
 uv run python scripts/prepare_local_model.py
 bash scripts/start_local_model.sh
 ```
 
-The preparation script pins the selected model commit in ignored .local/model-manifest.json
-and verifies its LFS SHA. It refuses corrupt/oversized artifacts. Keep model data out of Git.
-The model process binds only 127.0.0.1:8081, uses CPU, four threads, one slot, 8192 context,
-and a 10 GiB virtual memory ceiling. It is a development choice, not production sizing.
-Check local `GET http://127.0.0.1:8081/health` for a 200 response before enabling the adapter.
+The preparation script downloads pinned official artifacts with TLS/checksum verification,
+reuses verified files and refuses to overwrite a differing installed native runtime. Repeating
+setup on a running healthy installation does not replace memory-mapped libraries. Model and
+runtime files are ignored local artifacts, never committed. Network destinations are GitHub,
+Hugging Face and its model CDNs; approved network access is now applied.
 
-Restart only this API with its existing secret bindings:
+The model is CPU only, four threads, one slot, 8192 context and a 24 GiB virtual memory ceiling.
+Check local GET http://127.0.0.1:8081/health (200), then in separate processes:
 
 ```sh
+# Only against the selected development database; never migrate production here.
+uv run alembic upgrade head
 STUDIO_LOCAL_AI=1 uv run uvicorn studio.api:create_app --factory --host 127.0.0.1 --port 8000
-```
-
-Authenticated `GET /research/health` must report configured/ready true. Restart this project's
-Telegram worker with its existing allowlist/token and explicit per-process enablement:
-
-```sh
 STUDIO_TELEGRAM_ENABLED=1 uv run python -m studio.worker
 ```
 
-Do not start competing workers or migrate a production DB. Use the same dev database for API
-and worker. Nothing here changes services, networking or schedules on the production server.
-These processes are ephemeral; a snapshot does not preserve running processes.
+Keep existing dedicated token, positive Telegram user allowlist and admin token bindings.
+API and worker must share the same DB. Authenticated GET /research/health must report ready.
+Do not run competing workers. Publication snapshots do not retain running processes: restart
+model, API and worker in a restored task. Publishing the development snapshot is separate
+from any production deployment, which remains unapproved.
 
-## User experience and limits
-Send a YouTube/Instagram link. Metadata is attempted automatically, but a blocked/inaccessible
-video is never represented as watched. Select source-text type if needed, then send the
-public description or authorized transcript in the next message. No multi-line command is
-required. Text without a selected link becomes an independent text source. Minimum 80,
-maximum 12000 characters; larger text is rejected rather than silently cut. For descriptions,
-confidence is capped at 0.5 and an application-generated evidence limitation is always added.
-Only explicit founder approval moves the item to IDEA_APPROVED.
+## Conversational workflow
+Send a supported source link; metadata retrieval is attempted without pretending to watch
+inaccessible media. Send its description in the next message, or select authorized transcript
+with its type button. Text can also start an independent idea. Use /start for the Persian menu
+and «ایده جدید» to clear source context before a different standalone topic. No multi-line
+commands are needed. Minimum 80/max 12000 characters, no silent truncation. Text is saved
+before analysis, so failures return a retry button rather than losing it.
 
-Model errors leave the evidence saved and return a retry button, not invented analysis.
-Telegram callback authorization is checked before acknowledgement; callbacks are acknowledged
-before potentially slow model work. CPU inference can take minutes and one private worker
-processes updates sequentially. The API timeout is 240s and worker client timeout 300s;
-concurrent generation is limited to one slot. Unattended 05:00 delivery under concurrent
-inference still needs a separate job worker before claiming production scheduling guarantees.
+Local inference uses a schema-constrained demonstration plan (topic, input, action, comparison),
+then title/research/scoring. Identical claims and repeated generic fields are rejected.
+Description confidence is capped at 0.5. Evidence limitations come from actual stored input
+availability, not invented model statements. Suggestions are hypotheses for founder review;
+schema validity does not prove factual correctness or editorial quality.
 
-## Required live acceptance
-After network access is applied: download/checksum model, start server, inspect ready endpoint,
-run item 1's stored description through `POST /items/1/research` without a supplied research
-body, inspect the actual Persian output for fidelity and limitations, then exercise Telegram
-plain-text intake/reply and founder approval. Mocked provider tests alone do not establish
-model readiness, quality or a complete autonomous agent. No live approval is simulated.
+## Real validation and limits
+The founder's actual item 1 description ran through the live provider/API and was stored as
+RESEARCHED. The final structured-plan run took 117.5 seconds, score 53, confidence 0.4. The
+stored result was delivered through Telegram to the approved private user, with review buttons.
+No founder approval was simulated. The two smaller models were rejected after weak outputs;
+their unused files were removed. No transcript or watched-video claim was fabricated.
+
+A native-library re-extraction during an early repeat-install check caused the first runtime
+to stop. The installer was fixed and regression-tested to never rewrite intact mapped files;
+repeated setup now passes while the model stays healthy.
+
+The API model timeout is 420s; worker timeout 480s. The worker sends a receipt for long text
+before processing. One sequential worker can delay other messages/reports during inference;
+this is a development pilot, not a production scheduling SLA. Independent job workers,
+broader quality evaluation and performance work remain. Live YouTube access is still blocked
+by proxy 403; descriptions/authorized text remain the supported fallback. No automatic
+publication, paid service, production deployment or Espadna changes occurred.

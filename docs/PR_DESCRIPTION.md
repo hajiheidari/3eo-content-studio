@@ -1,36 +1,28 @@
-# M0 architecture and M1 manual Content Scout workflow
+# Private Scout: conversational text research and Telegram review
 
-The repository previously contained only README/gitignore. Add a private FastAPI/SQLAlchemy
-Scout workflow: canonical manual links, authorized transcripts, optional public YouTube metadata,
-validated Persian research through reviewed input or a local Ollama adapter, ranking, advisory
-duplicate checks, audited approvals and stale-write protection. Add official feed ingestion and
-an explicitly enabled private Telegram worker with durable update offsets and daily report outbox.
+Build the M0 architecture and manual Scout workflow in the previously empty repository.
+The private bot accepts a YouTube/Instagram link and the next plain description/authorized
+transcript, or an independent text. It stores per-user source context, invokes actual local
+AI, validates Persian research/ranking and returns review buttons. A new-idea menu prevents
+accidental attachment to old sources. Inaccessible media is never represented as watched.
 
-Reports become due at 05:00 Asia/Tehran. Repeated preparation and restart do not blindly resend
-messages; ambiguous sends are held for operator review. No paid calls, model downloads,
-publication, public exposure, deployment or Espadna modifications.
+Add safe YouTube metadata/official feed adapters, exact/advisory duplicate checks, classified
+provenance, optimistic approval writes, audit logs, durable Telegram offsets and a daily report
+outbox. Uncertain sends are held rather than blindly retried. Explicit approval never publishes.
 
-Validation: 79 tests pass, Ruff passes, four SQLite migrations apply, populated-database upgrade
-preserves data, schema consistency passes, and a real isolated loopback HTTP smoke passes.
-Research adapters use mocked integration tests. Live private Telegram link submission,
-persistence, reply and current-day report delivery were validated in cloud development.
-Inline approval buttons and full idea/today views are added with authorization tests.
-Live YouTube metadata was blocked by proxy 403; Ollama, PostgreSQL and unattended scheduled
-delivery remain unvalidated. No model is installed or selected.
+The local default is pinned/checksummed official Qwen2.5-14B GGUF with llama.cpp, CPU only,
+four threads/one slot. Suggestions require a concrete topic/input/action/comparison plan;
+repeated claims/generic fields are rejected. Evidence boundaries come from stored input.
+Model artifacts/DB/secrets remain outside Git. No paid API, production or Espadna changes.
 
-Remaining M1: pre-deadline automatic collection/research, official YouTube discovery/quota,
-production controls. M2–M4 remain pending. This is not production-ready.
+Validation: 84 tests, Ruff, migration/schema consistency and real loopback smoke pass.
+Actual item 1 description → live model/API → stored draft → Telegram result/keyboard passed
+(117.5s, score 53/confidence 0.4). Founder approval remains pending. Repeated setup on the
+running model passes after fixing native-library re-extraction. Observed model RSS ~16 GiB;
+this is a cloud development pilot, not an inspected production sizing recommendation.
 
-
-Automatic conversational intake now binds plain text to a durable per-user source context,
-classifies description/transcript/user text, automatically calls a schema-constrained local
-research adapter, stores actual output and returns review buttons. No multi-line command is
-required. Titles alone are rejected; provider failure retains source evidence for retry.
-Limited descriptions get a deterministic limitation and confidence ceiling. The founder's
-submitted video description is saved as description for item 1, not mislabeled as transcript.
-
-Added verified-checksum CPU runtime/model preparation and startup helpers for llama.cpp and
-Qwen3-4B GGUF. Runtime binary is downloaded/verified; model download remains blocked by
-Hugging Face proxy policy pending saved network draft application. No live inference success
-is claimed. Model weights and all local data stay out of Git. See docs/LOCAL_AI.md for the
-specific remaining activation/acceptance steps. No new required model variable was added.
+Remaining: live YouTube access is proxy-blocked; use supplied descriptions/authorized text.
+Pre-deadline discovery/research scheduling, official API quotas, PostgreSQL integration,
+production hardening and M2–M4 producer/media/dashboard remain pending. CPU inference can
+delay one sequential worker; no unattended scheduling SLA or editorial quality guarantee.
+No deployment or automatic publication is authorized.

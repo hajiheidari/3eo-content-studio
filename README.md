@@ -80,4 +80,6 @@ link, the next plain-text description is stored and analyzed automatically when 
 is ready. Use type buttons for an authorized transcript. Independent text works without a
 link. /research ID selects the right item for additional evidence; /analyze ID remains a
 retry option. Model downloads and activation are explicit, not triggered by users.
-Current model/network blockers are recorded in DEVELOPMENT_STATUS.md.
+The local model and actual Telegram research delivery are now validated in development.
+Use /start for the Persian menu; «ایده جدید» starts a different text source without deleting prior ideas.
+The supported default is Qwen2.5-14B via llama.cpp; see docs/LOCAL_AI.md for resources and limits.
