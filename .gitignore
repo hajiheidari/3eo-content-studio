@@ -224,3 +224,5 @@ studio.db
 studio.db-*
 
 studio-worker.lock
+
+.local/

@@ -150,10 +150,15 @@ def test_manual_link_to_telegram_report_and_approval(tmp_path, monkeypatch):
             200, json={"done": True, "message": {"content": json.dumps(research_data())}}
         )
 
+    class NoMetadata:
+        def fetch(self, url):
+            raise IntegrationError("Metadata unavailable in mocked workflow")
+
     app = create_app(
         f"sqlite:///{tmp_path}/workflow.db",
         token="test",
         provider=OllamaResearch("test", mock_client(model)),
+        metadata=NoMetadata(),
     )
     Base.metadata.create_all(app.state.engine)
     monkeypatch.setattr("studio.api.report_day", lambda _: "2026-11-03")

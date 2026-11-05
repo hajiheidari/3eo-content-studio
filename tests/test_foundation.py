@@ -12,7 +12,13 @@ from studio.storage import Audit, Base
 
 @pytest.fixture
 def client(tmp_path):
-    app = create_app(f"sqlite:///{tmp_path}/test.db", token="test-only")
+    from studio.integrations import IntegrationError
+
+    class NoMetadata:
+        def fetch(self, url):
+            raise IntegrationError("Test metadata unavailable")
+
+    app = create_app(f"sqlite:///{tmp_path}/test.db", token="test-only", metadata=NoMetadata())
     Base.metadata.create_all(app.state.engine)
     with TestClient(app, headers={"Authorization": "Bearer test-only"}) as client:
         yield client

@@ -10,7 +10,7 @@ uv run alembic upgrade head
 uv run alembic check
 ```
 
-Use only development DATABASE_URL. 67 tests currently pass. They cover private API auth,
+Use only development DATABASE_URL. 79 tests currently pass. They cover private API auth,
 URL/SSRF validation, canonical and near-duplicates, transcript gating, research schema,
 mocked local-model integration, score/approval/audit flow, stale writes, safe official feeds,
 metadata failures, body caps, Telegram authorization and command handling, Tehran timing,
@@ -30,3 +30,11 @@ The YouTube metadata attempt failed at the proxy with 403; no source analysis is
 No paid service, live model inference or production connection was used. PostgreSQL, research
 quality, official discovery quotas and unattended scheduling remain unverified. One upstream Starlette TestClient/httpx deprecation warning remains.
 The full media/script/render/export workflow is not implemented or tested.
+
+
+Conversational intake tests cover link → plain description → schema-constrained local-provider
+response → stored research → callback approval, independent text, title rejection, per-user
+context isolation, persistent type selection, retained evidence after model failure, evidence
+confidence caps and artifact checksum enforcement. Revision 0004 is included in populated-DB
+upgrade checks. These use mocked inference; model weights/download and real inference are
+still blocked by network configuration. They do not establish live AI quality.

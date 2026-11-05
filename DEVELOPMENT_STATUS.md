@@ -34,15 +34,15 @@ not evidence about the production host. No production or Espadna Sim changes.
 - Inline report buttons support approve/reject/save/more research; callback senders are
   independently authorized and callback query acknowledgements are sent. /today reads the
   prepared report and /idea ID exposes the complete research details.
-- Three Alembic revisions, frozen dependencies and CI including migration consistency checks.
+- Four Alembic revisions, frozen dependencies and CI including migration consistency checks.
 
 ## Validation
-67 automated tests pass, including the mocked manual Telegram → authorized transcript →
+79 automated tests pass, including the mocked manual Telegram → authorized transcript →
 local-model research → report → approval flow. Tests cover SSRF inputs, redirects, oversized
 responses, invalid AI output, unsafe XML, missing evidence, duplicate ingestion/reporting,
 private user access, Tehran deadline, restart/outbox behavior, stale approval writes and
 upgrading an existing database without losing its data. Ruff passes. SQLite migration is
-at 0003; repeated upgrades and Alembic schema consistency pass. A fresh migrated database
+at 0004; repeated upgrades and Alembic schema consistency pass. A fresh migrated database
 and a real loopback HTTP server pass health, persistence, transcript gate and auth checks.
 One upstream Starlette/httpx TestClient deprecation warning remains. PostgreSQL and live
 external APIs are not validated; mocked tests do not establish research quality or delivery.
@@ -79,3 +79,22 @@ M1 is not yet accepted as a complete, live-tested MVP.
 M2–M4 are not implemented: producer/scripts, media uploads/audio/video/subtitles, Remotion,
 dashboard, full hardening and controlled deployment. The full production/export workflow
 has not been tested. Production host inspection and explicit approval remain mandatory.
+
+
+## Automatic intake implementation (current continuation)
+Added revision 0004: classified evidence and per-actor conversation context. Telegram accepts
+plain descriptions after a link and standalone user text, automatically invokes research and
+returns the actual stored result with approval buttons. Metadata retrieval is attempted on
+link submission. Type-selection buttons distinguish descriptions from transcripts. Short titles
+are rejected as insufficient evidence. Source and approval locks remain enforced. A failed
+provider leaves source text saved with a retry button. Callback acknowledgements precede
+slow analysis. A dedicated localhost llama.cpp adapter and readiness route are implemented.
+
+The founder's supplied English video description is now stored for item 1 as DESCRIPTION,
+not a transcript. No research result has been fabricated or injected as an AI result.
+Verified the official llama.cpp CPU runtime checksum and execution. Added explicit artifact
+preparation/start helpers; model weights are NOT installed because Hugging Face access is
+blocked. Network additions are saved in the development environment draft but not applied.
+See docs/LOCAL_AI.md for exact installation/startup and live acceptance steps. Automatic
+research remains operationally BLOCKED until model download/startup and genuine inference
+are verified. No completion claim for the live agent is made. No paid API was activated.

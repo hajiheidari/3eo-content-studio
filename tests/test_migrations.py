@@ -28,6 +28,6 @@ def test_existing_data_upgrade_and_repeatability(tmp_path, monkeypatch):
         ).one() == ("REJECTED", 1)
         assert (
             connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0003"
+            == "0004"
         )
     engine.dispose()

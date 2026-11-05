@@ -113,11 +113,16 @@ class Worker:
             if handled is None:
                 state = "handled"
                 try:
-                    reply = self.gateway.handle(event)
-                    recipient = self.gateway.recipient(event)
+                    self.gateway.authorize(event)
                     if "callback_query" in event:
                         self.telegram.answer_callback(event["callback_query"]["id"])
-                    self.telegram.send(recipient, reply)
+                    reply = self.gateway.handle(event)
+                    recipient = self.gateway.recipient(event)
+                    keyboard = getattr(reply, "keyboard", None)
+                    if keyboard:
+                        self.telegram.send(recipient, str(reply), keyboard=keyboard)
+                    else:
+                        self.telegram.send(recipient, reply)
                 except PermissionError:
                     state = "ignored"
                 except Exception:
@@ -232,7 +237,7 @@ def main():
         try:
             with httpx.Client(
                 base_url="http://127.0.0.1:8000",
-                timeout=100,
+                timeout=300,
                 headers={"Authorization": f"Bearer {os.environ['STUDIO_ADMIN_TOKEN']}"},
             ) as studio:
                 worker = Worker(

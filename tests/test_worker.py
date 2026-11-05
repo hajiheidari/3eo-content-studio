@@ -15,6 +15,9 @@ class Studio:
         self.day = day
         self.calls = []
 
+    def put(self, path, **kwargs):
+        return httpx.Response(200, json={"item_id": 1}, request=httpx.Request("PUT", "http://test"))
+
     def post(self, path, **kwargs):
         self.calls.append((path, kwargs))
         return httpx.Response(
@@ -119,7 +122,7 @@ def test_update_cursor_restart_and_unauthorized(setup):
     ]
     Worker(sessions, studio, telegram, {123}).poll()
     Worker(sessions, studio, telegram, {123}).poll()
-    assert len(studio.calls) == 1 and len(telegram.sent) == 1
+    assert len(studio.calls) == 2 and len(telegram.sent) == 1
     with sessions() as session:
         assert session.get(BotCursor, 1).offset == 12
         assert session.get(BotUpdate, 10).status == "ignored"

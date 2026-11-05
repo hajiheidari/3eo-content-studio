@@ -33,6 +33,7 @@ class Item(Base):
     score: Mapped[float | None] = mapped_column(Float)
     title: Mapped[str | None] = mapped_column(String(1000))
     metadata_provenance: Mapped[str | None] = mapped_column(String(300))
+    evidence_kind: Mapped[str | None] = mapped_column(String(30))
     version: Mapped[int] = mapped_column(default=1, nullable=False)
     __mapper_args__ = {"version_id_col": version}
 
@@ -91,3 +92,10 @@ class Source(Base):
     name: Mapped[str] = mapped_column(String(100))
     url: Mapped[str] = mapped_column(String(2048), unique=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class Conversation(Base):
+    __tablename__ = "conversations"
+    actor: Mapped[str] = mapped_column(String(100), primary_key=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("source_items.id"))
+    evidence_kind: Mapped[str] = mapped_column(String(30), default="description")

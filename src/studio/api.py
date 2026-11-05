@@ -1,8 +1,11 @@
+import hashlib
 import hmac
 import json
 import os
 from datetime import datetime, timezone
+from typing import Literal
 
+import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, ValidationError
@@ -12,9 +15,9 @@ from sqlalchemy.orm.exc import StaleDataError
 
 from .domain import TRANSITIONS, normalize_url, rank, report_day, text_similarity
 from .feeds import FeedReader, feed_url
-from .integrations import OllamaResearch, YouTubeMetadata
+from .integrations import LlamaResearch, OllamaResearch, YouTubeMetadata
 from .research import Research, UnconfiguredProvider
-from .storage import Audit, Delivery, Item, Report, Source, database
+from .storage import Audit, Conversation, Delivery, Item, Report, Source, database
 
 
 def create_app(database_url=None, token=None, provider=None, metadata=None, feeds=None):
@@ -25,6 +28,8 @@ def create_app(database_url=None, token=None, provider=None, metadata=None, feed
         if os.getenv("STUDIO_OLLAMA_MODEL")
         else UnconfiguredProvider()
     )
+    if os.getenv("STUDIO_LOCAL_AI") == "1" and provider.__class__ is UnconfiguredProvider:
+        provider = LlamaResearch()
     metadata = metadata or YouTubeMetadata()
     feeds = feeds or FeedReader()
     app = FastAPI(title="3EO Content Studio", docs_url=None, redoc_url=None, openapi_url=None)
@@ -58,6 +63,23 @@ def create_app(database_url=None, token=None, provider=None, metadata=None, feed
         if item is None:
             raise HTTPException(404, "Item not found")
         return item
+
+    @app.get("/research/health", dependencies=[Depends(authorized)])
+    def research_health():
+        if isinstance(provider, UnconfiguredProvider):
+            return {"configured": False, "ready": False, "provider": None}
+        if isinstance(provider, LlamaResearch):
+            try:
+                response = httpx.get("http://127.0.0.1:8081/health", timeout=2)
+                ready = response.status_code == 200
+            except httpx.HTTPError:
+                ready = False
+            return {"configured": True, "ready": ready, "provider": "llama.cpp"}
+        return {
+            "configured": True,
+            "ready": None,
+            "provider": "ollama" if isinstance(provider, OllamaResearch) else "custom",
+        }
 
     @app.get("/health")
     def health():
@@ -135,6 +157,7 @@ def create_app(database_url=None, token=None, provider=None, metadata=None, feed
                                 published_at=entry.published_at,
                                 metadata_provenance=f"Official public feed: {source.name}",
                                 transcript=entry.excerpt or None,
+                                evidence_kind="feed_excerpt",
                                 transcript_provenance=f"Public feed excerpt only from {source.url}; linked article not retrieved",
                             )
                         )
@@ -144,6 +167,67 @@ def create_app(database_url=None, token=None, provider=None, metadata=None, feed
                     pass  # concurrent ingestion already saved the same URL
             session.commit()
             return {"added": added, "entries": len(entries), "evidence": "feed excerpt only"}
+
+    @app.get("/conversation")
+    def conversation(actor=Depends(authorized)):
+        with sessions() as session:
+            current = session.get(Conversation, actor)
+            if not current:
+                raise HTTPException(404, "No active source")
+            return {"item_id": current.item_id, "evidence_kind": current.evidence_kind}
+
+    @app.put("/conversation")
+    def set_conversation(body: ConversationInput, actor=Depends(authorized)):
+        with sessions() as session:
+            item = get_item(session, body.item_id)
+            current = session.get(Conversation, actor)
+            if current:
+                current.item_id, current.evidence_kind = item.id, body.evidence_kind
+            else:
+                session.add(
+                    Conversation(actor=actor, item_id=item.id, evidence_kind=body.evidence_kind)
+                )
+            session.commit()
+        return {"item_id": body.item_id, "evidence_kind": body.evidence_kind}
+
+    @app.post("/items/text")
+    def standalone_text(body: EvidenceInput, actor=Depends(authorized)):
+        digest = hashlib.sha256(body.text.encode()).hexdigest()
+        with sessions() as session:
+            item = session.scalar(
+                select(Item).where(Item.platform == "text", Item.content_id == digest)
+            )
+            if not item:
+                item = Item(
+                    platform="text",
+                    content_id=digest,
+                    url=f"urn:3eo:text:{digest}",
+                    transcript=body.text,
+                    transcript_provenance=body.provenance,
+                    evidence_kind=body.kind,
+                )
+                session.add(item)
+                try:
+                    session.commit()
+                except IntegrityError:
+                    session.rollback()
+                    item = session.scalar(
+                        select(Item).where(Item.platform == "text", Item.content_id == digest)
+                    )
+            return {"id": item.id, "status": item.status}
+
+    @app.put("/items/{item_id}/evidence")
+    def store_evidence(item_id: int, body: EvidenceInput, actor=Depends(authorized)):
+        with sessions() as session:
+            item = get_item(session, item_id)
+            if item.status not in {"DISCOVERED", "MORE_RESEARCH"}:
+                raise HTTPException(
+                    409, "Evidence locked; request more research before replacing it"
+                )
+            item.transcript, item.transcript_provenance = body.text, body.provenance
+            item.evidence_kind = body.kind
+            session.commit()
+        return {"status": "stored", "kind": body.kind}
 
     @app.post("/items", dependencies=[Depends(authorized)])
     def submit(body: Submission):
@@ -207,6 +291,7 @@ def create_app(database_url=None, token=None, provider=None, metadata=None, feed
                 "published_at": item.published_at,
                 "score": item.score,
                 "research": json.loads(item.research) if item.research else None,
+                "evidence_kind": item.evidence_kind,
             }
 
     @app.get("/items/{item_id}/duplicates", dependencies=[Depends(authorized)])
@@ -257,6 +342,7 @@ def create_app(database_url=None, token=None, provider=None, metadata=None, feed
             if item.status not in {"DISCOVERED", "MORE_RESEARCH"}:
                 raise HTTPException(409, "Transcript is locked after research")
             item.transcript, item.transcript_provenance = body.text, body.provenance
+            item.evidence_kind = "transcript"
             if body.author is not None:
                 item.author = body.author
                 item.metadata_provenance = "User supplied"
@@ -277,7 +363,14 @@ def create_app(database_url=None, token=None, provider=None, metadata=None, feed
                 raise HTTPException(409, "Research not allowed in this state")
             try:
                 result = Research.model_validate(
-                    body or provider.analyze(item.transcript, item.url)
+                    body
+                    or provider.analyze(
+                        f"Evidence kind: {item.evidence_kind or 'unclassified supplied text'}. "
+                        f"Provenance (user supplied, not independently verified): {item.transcript_provenance}. "
+                        "Analyze ONLY this material; do not claim to have watched a video or read a full article.\n"
+                        + item.transcript,
+                        item.url,
+                    )
                 )
             except ValidationError:
                 raise HTTPException(502, "Research provider returned invalid output") from None
@@ -285,6 +378,18 @@ def create_app(database_url=None, token=None, provider=None, metadata=None, feed
                 raise HTTPException(
                     503, "Research provider unavailable; submit reviewed research"
                 ) from None
+            if item.evidence_kind in {"description", "feed_excerpt", "user_text"}:
+                result.limitations = list(
+                    dict.fromkeys(
+                        result.limitations
+                        + [
+                            "این پژوهش فقط بر متن ارسالی استوار است؛ ویدئو یا مقالهٔ کامل بررسی نشده و ادعاها مستقلاً تأیید نشده‌اند."
+                        ]
+                    )
+                )
+                result.confidence = (
+                    min(result.confidence, 0.5) if result.confidence is not None else None
+                )
             item.research = result.model_dump_json()
             item.score = rank(result.criteria)
             session.add(
@@ -370,3 +475,14 @@ class SourceInput(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     url: str = Field(min_length=1, max_length=2048)
     enabled: bool = True
+
+
+class EvidenceInput(BaseModel):
+    text: str = Field(min_length=80, max_length=12000)
+    kind: Literal["description", "transcript", "user_text"]
+    provenance: str = Field(min_length=1, max_length=1000)
+
+
+class ConversationInput(BaseModel):
+    item_id: int = Field(gt=0)
+    evidence_kind: Literal["description", "transcript", "user_text"] = "description"

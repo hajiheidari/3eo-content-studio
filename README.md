@@ -72,3 +72,12 @@ real published RSS/Atom URL; the app does not guess endpoints. `GET /sources` li
 `POST /sources/{id}/refresh` ingests up to 50 feed entries. Reposting a source URL updates
 its name/enabled flag. Refresh is explicit, not an automatic discovery schedule. Excerpts
 are identified as limited evidence and never presented as full-article/video transcripts.
+
+
+## Automatic conversational research
+See [local AI activation and acceptance](docs/LOCAL_AI.md). After selecting a source with a
+link, the next plain-text description is stored and analyzed automatically when a provider
+is ready. Use type buttons for an authorized transcript. Independent text works without a
+link. /research ID selects the right item for additional evidence; /analyze ID remains a
+retry option. Model downloads and activation are explicit, not triggered by users.
+Current model/network blockers are recorded in DEVELOPMENT_STATUS.md.
