@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import StaleDataError
 
+from .backlog import register_backlog
 from .domain import TRANSITIONS, normalize_url, rank, report_day, text_similarity
 from .feeds import FeedReader, feed_url
 from .integrations import LlamaResearch, OllamaResearch, YouTubeMetadata
@@ -27,12 +28,16 @@ from .storage import (
     Delivery,
     Item,
     MediaAsset,
+    ProductionTask,
     RenderJob,
     Report,
     ScriptDraft,
     Source,
+    VisualJob,
     database,
 )
+from .visual_api import register_visuals
+from .youtube import YouTubeCatalog
 
 
 def create_app(
@@ -43,6 +48,7 @@ def create_app(
     feeds=None,
     script_provider=None,
     media_root=None,
+    catalog=None,
 ):
     engine, sessions = database(database_url or os.getenv("DATABASE_URL", "sqlite:///./studio.db"))
     secret = token or os.getenv("STUDIO_ADMIN_TOKEN")
@@ -114,6 +120,8 @@ def create_app(
             session.execute(select(Conversation.upload_kind).limit(1)).all()
             session.execute(select(MediaAsset.id).limit(1)).all()
             session.execute(select(RenderJob.id).limit(1)).all()
+            session.execute(select(VisualJob.script_id).limit(1)).all()
+            session.execute(select(ProductionTask.id).limit(1)).all()
         return {"status": "ok", "publication_enabled": False}
 
     @app.get("/sources", dependencies=[Depends(authorized)])
@@ -543,6 +551,10 @@ def create_app(
     register_render(
         app, sessions, authorized, media_root or os.getenv("STUDIO_MEDIA_ROOT", ".local/media")
     )
+    register_visuals(
+        app, sessions, authorized, media_root or os.getenv("STUDIO_MEDIA_ROOT", ".local/media")
+    )
+    register_backlog(app, sessions, authorized, catalog or YouTubeCatalog())
     return app
 
 

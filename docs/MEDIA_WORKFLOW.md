@@ -1,5 +1,8 @@
 # M2 media and basic preview workflow
 
+The current default is [founder narration only](FOUNDER_NARRATION_WORKFLOW.md). The screen-upload
+path below is optional; generated original motion visuals now replace that requirement.
+
 The approved script is the gate. Nothing accepts/uses production media for an unapproved,
 old or revised script. Assets pin the exact script ID/hash. Original media is private outside
 PostgreSQL and never overwritten by processing. No TTS, voice cloning or source-video reuse.
@@ -14,12 +17,11 @@ PostgreSQL and never overwritten by processing. No TTS, voice cloning or source-
    Gentle denoising/high-pass/loudness processing produces WAV plus a private MP3 preview to
    listen to. Speech is not trimmed, pitch-shifted, synthesized or cloned. Noise/speech quality
    still needs human listening. No automatic speech transcript validation is claimed.
-4. Upload your screen recording (MP4/WebM/MOV), then press «ساخت پیش‌نمایش». Both processed
-   voice and a verified screen recording for this exact script are required. Screen footage must
-   cover the narration; it is not silently looped to invent a longer demonstration.
+4. Send your narration; original motion visuals are generated and combined automatically.
+   Optional own screen footage may replace them. Uploaded footage must cover narration and is not looped.
 5. Basic preview is a genuine 1080×1920 H.264/AAC MP4 combining your own screen and voice,
    fitting/padding footage without cropping it. It has no subtitles, automatic cursor effects,
-   branded assets or Remotion animation. Real motion templates/Persian ASR remain future work.
+   branded assets or Remotion animation. A basic local RTL motion template is now implemented; advanced motion/Persian ASR remain future work.
 6. Watch the video before «تأیید همین ویدئو». Only then is «دریافت فایل اصلی» allowed. Export is
    a private original MP4/document for manual publication, never an Instagram/YouTube post.
 
@@ -58,7 +60,7 @@ processing and a genuine vertical H.264/AAC file, exact approval/export, stale/t
 script revision gates, body/time caps, deduplication, decoder environment isolation and Telegram
 mock transfers. Tests are deliberately tiny lower-layer timing fixtures, not the founder's video.
 The real project's script 2 is approved and upload controls are delivered, but no founder media
-has been received yet. No personal video, subtitle, final approval/export or publication is claimed.
+has been received yet. A silent original motion draft is now generated; no founder-voice video, subtitle, final approval/export or publication is claimed.
 
 Schema: 0006 adds private media and upload context; 0007 adds rendering jobs. Back up the DB
 and the private media tree together. Processes still need restart after development snapshot

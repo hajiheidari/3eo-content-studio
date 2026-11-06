@@ -56,3 +56,13 @@ exact final-approval and manual-export gates. Tests cover stale preview/script a
 outputs, dialogue upload selection, bounded Telegram transfers and video-before-controls order.
 The actual founder has not uploaded voice/screen assets yet; full personal-video validation,
 ASR/subtitles and advanced composition remain pending. CI installs ffmpeg and util-linux.
+
+
+Automation acceptance: 100-link source import and deduplication; UTF-8 Telegram TXT transfer;
+unavailable sources held without inference; real-stat official API mocks with true description
+provenance; one daily persisted sweep; system selection audit; queue script remaining unapproved;
+genuine RTL motion and audio-only intake to actual H.264/AAC assembly and exact approved export.
+Tiny sine audio exists only in temporary test databases, never as founder speech. Real YouTube
+discovery and founder speech quality remain unverified; an actual source request is proxy-blocked.
+
+Latest complete suite: 133 passing tests; one upstream Starlette/httpx deprecation warning.

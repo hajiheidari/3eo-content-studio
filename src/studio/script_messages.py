@@ -23,7 +23,7 @@ def script_review(script):
         "\nسه هوک پیشنهادی:",
     ]
     lines += [f"{n}. {hook}" for n, hook in enumerate(content["hooks_fa"], 1)]
-    lines += ["\nمتن روایت با صدای خودت:", content["narration_fa"], "\nاستوری‌بورد و دستور ضبط:"]
+    lines += ["\nمتن روایت با صدای خودت:", content["narration_fa"], "\nاستوری‌بورد ویدئو (تصویر شماتیک را سیستم می‌سازد):"]
     for shot in content["storyboard"]:
         visual = "ضبط صفحه" if shot["visual_type"] == "screen_recording" else "موشن گرافیک"
         lines.append(
@@ -42,7 +42,7 @@ def script_review(script):
         " ".join(content["hashtags"]),
         "\nمنابع:",
         *content["source_references"],
-        "\nاین پیش‌نویس باید جداگانه تأیید شود؛ هیچ انتشار یا تولید صدایی انجام نشده است.",
+        "\nسناریو را تأیید کن و فقط متن روایت را با صدای خودت ضبط کن؛ تصویر و تدوین با سیستم است. ضبط صفحه لازم نیست. هیچ انتشار یا تولید صدایی انجام نشده است.",
     ]
     parts = split_telegram("\n".join(lines))
     keyboard = {

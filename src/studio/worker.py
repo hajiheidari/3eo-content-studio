@@ -5,6 +5,7 @@ import json
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,8 +15,9 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 
 from .domain import report_day
+from .pipeline import run_next
 from .reports import format_report, report_keyboard
-from .storage import BotCursor, BotUpdate, Delivery, Report, database
+from .storage import BotCursor, BotUpdate, Delivery, ProductionTask, Report, database
 from .telegram import TelegramGateway
 from .telegram_media import receive_media
 
@@ -251,6 +253,54 @@ class Worker:
                     session.add(BotCursor(id=1, offset=offset))
                 session.commit()
 
+    def production(self):
+        self.studio.post(
+            "/youtube/refresh", headers={"X-Studio-Actor": f"telegram:{min(self.users)}"}
+        ).raise_for_status()
+        run_next(self.studio)
+        # Persist notification reservation before sending. Unknown delivery is never blindly retried.
+        with self.sessions() as session:
+            tasks = list(
+                session.scalars(
+                    select(ProductionTask).where(
+                        ProductionTask.state == "script_ready",
+                        ProductionTask.delivery_state == "pending",
+                    )
+                )
+            )
+        for task in tasks:
+            if not task.actor.startswith("telegram:"):
+                continue
+            recipient = int(task.actor.split(":")[1])
+            if recipient not in self.users:
+                continue
+            response = self.studio.get(f"/scripts/{task.script_id}")
+            response.raise_for_status()
+            reply = self.gateway.script_reply(response.json())
+            with self.sessions() as session:
+                claimed = session.execute(
+                    update(ProductionTask)
+                    .where(ProductionTask.id == task.id, ProductionTask.delivery_state == "pending")
+                    .values(delivery_state="sending")
+                ).rowcount
+                session.commit()
+            if not claimed:
+                continue
+            state = "sent"
+            try:
+                parts = reply.parts or [str(reply)]
+                for index, part in enumerate(parts):
+                    self.telegram.send(
+                        recipient,
+                        part,
+                        keyboard=reply.keyboard if index == len(parts) - 1 else None,
+                    )
+            except Exception:
+                state = "uncertain"
+            with self.sessions() as session:
+                session.get(ProductionTask, task.id).delivery_state = state
+                session.commit()
+
     def reports(self, now=None):
         now = now or datetime.now(timezone.utc)
         day = report_day(now)
@@ -346,11 +396,17 @@ def main():
             raise SystemExit("Another worker already owns this lock") from None
         engine, sessions = database(os.getenv("DATABASE_URL", "sqlite:///./studio.db"))
         try:
-            with httpx.Client(
-                base_url="http://127.0.0.1:8000",
-                timeout=720,
-                headers={"Authorization": f"Bearer {os.environ['STUDIO_ADMIN_TOKEN']}"},
-            ) as studio:
+            with (
+                httpx.Client(
+                    base_url="http://127.0.0.1:8000",
+                    timeout=720,
+                    headers={"Authorization": f"Bearer {os.environ['STUDIO_ADMIN_TOKEN']}"},
+                ) as studio,
+                ThreadPoolExecutor(
+                    max_workers=1, thread_name_prefix="studio-backlog"
+                ) as production_pool,
+            ):
+                production_future = None
                 worker = Worker(
                     sessions, studio, TelegramAPI(os.environ["STUDIO_TELEGRAM_TOKEN"]), users
                 )
@@ -359,6 +415,12 @@ def main():
                     try:
                         worker.reports()  # delivery first, before long-polling
                         worker.poll()
+                        if production_future is None or production_future.done():
+                            if production_future is not None:
+                                completed = production_future
+                                production_future = None
+                                completed.result()
+                            production_future = production_pool.submit(worker.production)
                     except Exception:
                         print(
                             "Worker cycle failed; details suppressed to protect credentials",

@@ -9,6 +9,34 @@ TELEGRAM_LIMIT = AUDIO_LIMIT
 def receive_media(gateway, studio, telegram, event):
     message = gateway.authorize(event)
     actor = {"X-Studio-Actor": f"telegram:{message['from']['id']}"}
+    document = message.get("document", {})
+    if document.get("mime_type") == "text/plain":
+        size = document.get("file_size")
+        if not isinstance(size, int) or not 0 < size <= 128 * 1024:
+            return "فایل لینک‌ها باید UTF-8 و حداکثر ۱۲۸ کیلوبایت باشد."
+        data = bytearray()
+        with telegram.download(document["file_id"], size) as chunks:
+            for chunk in chunks:
+                data.extend(chunk)
+                if len(data) > 128 * 1024:
+                    return "فایل لینک‌ها بیش از سقف مجاز است."
+        try:
+            links = bytes(data).decode("utf-8-sig").strip().splitlines()
+        except UnicodeDecodeError:
+            return "فایل لینک‌ها باید متن UTF-8 باشد."
+        if not 1 <= len(links) <= 200 or not all(
+            line.strip().startswith("https://") for line in links
+        ):
+            return "در فایل فقط ۱ تا ۲۰۰ لینک یوتیوب بنویس؛ هر لینک در یک خط."
+        return gateway.handle(
+            {
+                "message": {
+                    "from": message["from"],
+                    "chat": message["chat"],
+                    "text": "/bulk\n" + "\n".join(links),
+                }
+            }
+        )
     current = studio.get("/conversation", headers=actor)
     if current.status_code != 200 or not current.json().get("upload_script_id"):
         return "ابتدا سناریوی تأییدشده و نوع فایل را از دکمهٔ بارگذاری انتخاب کن؛ فایل دانلود نشد."
@@ -65,8 +93,31 @@ def receive_media(gateway, studio, telegram, event):
     preview.raise_for_status()
     if len(preview.content) > 20 * 1024**2:
         return "صدا پردازش شد؛ پیش‌نمایش برای ارسال در تلگرام بیش از حد بزرگ است."
-    reply = BotReply(
-        f"اصل صدا با شناسهٔ #{asset['id']} محفوظ است. پیش‌نمایش پاک‌سازی ملایم و تنظیم بلندی صدا آماده شد؛ قبل از استفاده گوش بده. صدایی ساخته یا شبیه‌سازی نشده است."
+    # The only founder asset required is narration. Generate original visuals and combine it now.
+    rendered = gateway.handle(
+        {
+            "message": {
+                "from": message["from"],
+                "chat": message["chat"],
+                "text": f"/preview {script_id}",
+            }
+        }
     )
+    if isinstance(rendered, BotReply):
+        reply = rendered
+    else:
+        reply = BotReply(
+            str(rendered),
+            {
+                "inline_keyboard": [
+                    [{"text": "تلاش مجدد ساخت ویدئو", "callback_data": f"preview:{script_id}"}]
+                ]
+            },
+        )
+    receipt = BotReply(
+        "اصل صدا محفوظ است و نسخهٔ پردازش‌شده آماده شد.\n" + str(reply), reply.keyboard
+    )
+    receipt.__dict__.update(reply.__dict__)
+    reply = receipt
     reply.audio_preview = preview.content
     return reply

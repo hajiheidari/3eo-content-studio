@@ -8,7 +8,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: '3.12'
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg util-linux
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg util-linux fonts-dejavu-core
       - run: uv sync --frozen
       - run: uv run pytest -q
       - run: uv run ruff check src tests scripts migrations

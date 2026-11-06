@@ -50,3 +50,11 @@ Private originals, audio previews and render outputs live under .local/media and
 with the DB; no static public serving. The process-local media slot assumes one API process.
 User rights/own-voice declarations are required; they are not forensic identity checks. Export
 requires exact final approval and never posts to a platform. See docs/MEDIA_WORKFLOW.md.
+
+
+Narration-only production uses Pillow/RAQM and `/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf`
+(`fonts-dejavu-core`), with the existing ffmpeg/prlimit limits. Migration 0008 adds source tasks,
+visual leases and daily discovery reservations. One background queue thread per private worker
+keeps polling responsive; this is not a distributed queue. Review `processing`/`sending` records
+after crashes before requeuing. YouTube discovery requires separately reviewed API-key/network
+configuration; see docs/FOUNDER_NARRATION_WORKFLOW.md. No production deployment is implied.

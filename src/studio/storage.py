@@ -154,3 +154,29 @@ class RenderJob(Base):
     sha256: Mapped[str | None] = mapped_column(String(64))
     metadata_json: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[float] = mapped_column(Float)
+
+
+class VisualJob(Base):
+    __tablename__ = "visual_jobs"
+    script_id: Mapped[int] = mapped_column(ForeignKey("scripts.id"), primary_key=True)
+    script_hash: Mapped[str] = mapped_column(String(64))
+    state: Mapped[str] = mapped_column(String(30))
+    started_at: Mapped[float] = mapped_column(Float)
+    asset_id: Mapped[int | None] = mapped_column(ForeignKey("media_assets.id"))
+
+
+class ProductionTask(Base):
+    __tablename__ = "production_tasks"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("source_items.id"), unique=True)
+    actor: Mapped[str] = mapped_column(String(100))
+    state: Mapped[str] = mapped_column(String(30))
+    started_at: Mapped[float] = mapped_column(Float, default=0)
+    script_id: Mapped[int | None] = mapped_column(ForeignKey("scripts.id"))
+    delivery_state: Mapped[str] = mapped_column(String(30), default="pending")
+
+
+class DiscoverySweep(Base):
+    __tablename__ = "discovery_sweeps"
+    day: Mapped[str] = mapped_column(String(10), primary_key=True)
+    state: Mapped[str] = mapped_column(String(20))

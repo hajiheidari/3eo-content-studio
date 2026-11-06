@@ -25,7 +25,7 @@ class TelegramGateway:
             return update.get("message", {})
         query = update["callback_query"]
         script_action = re.fullmatch(
-            r"(script|scriptview|scriptrevise|assets|voiceupload|screenupload|confirmvoice|confirmscreen|preview|videoview|exportvideo):([1-9][0-9]{0,18})",
+            r"(script|scriptview|scriptrevise|assets|voiceupload|screenupload|confirmvoice|confirmscreen|visuals|preview|videoview|exportvideo):([1-9][0-9]{0,18})",
             query.get("data", ""),
         )
         video_approval = re.fullmatch(
@@ -44,7 +44,7 @@ class TelegramGateway:
             command = (
                 f"/approvescript {script_approval[1]} {script_approval[2]}"
                 if script_approval
-                else f"/{ {'script': 'script', 'scriptview': 'scriptview', 'scriptrevise': 'revisescript', 'assets': 'assets', 'voiceupload': 'voiceupload', 'screenupload': 'screenupload', 'confirmvoice': 'confirmvoice', 'confirmscreen': 'confirmscreen', 'preview': 'preview', 'videoview': 'videoview', 'exportvideo': 'exportvideo'}[script_action[1]] } {script_action[2]}"
+                else f"/{ {'script': 'script', 'scriptview': 'scriptview', 'scriptrevise': 'revisescript', 'assets': 'assets', 'voiceupload': 'voiceupload', 'screenupload': 'screenupload', 'confirmvoice': 'confirmvoice', 'confirmscreen': 'confirmscreen', 'visuals': 'visuals', 'preview': 'preview', 'videoview': 'videoview', 'exportvideo': 'exportvideo'}[script_action[1]] } {script_action[2]}"
             )
             return {
                 "from": query.get("from", {}),
@@ -169,7 +169,9 @@ class TelegramGateway:
         message = self.authorize(update)
         text = message.get("text", "").strip()
         if text.startswith("/preview "):
-            return "در حال ساخت پیش‌نمایش با صدای خودت و ضبط صفحه هستم. هیچ انتشار خودکاری انجام نمی‌شود."
+            return "در حال ساخت ویدئو با صدای خودت هستم؛ ضبط صفحه لازم نیست. انتشار خودکار انجام نمی‌شود."
+        if text.startswith("/visuals "):
+            return "در حال ساخت تصویر متحرک فارسی هستم؛ ممکن است چند دقیقه طول بکشد."
         if text.startswith("/script "):
             return (
                 "در حال آماده‌سازی سناریو برای بازبینی هستم؛ این مرحله ممکن است چند دقیقه طول بکشد."
@@ -197,7 +199,7 @@ class TelegramGateway:
             if text == "/new":
                 self.studio.delete("/conversation", headers=actor).raise_for_status()
             return BotReply(
-                "لینک یا متن مستقلِ قابل استفاده‌ات را بفرست. بعد از لینک، توضیحات یا رونوشت را در پیام بعدی بفرست تا پژوهش شود. برای شروع موضوع دیگری، «ایده جدید» را بزن.",
+                "برای تولید، چند لینک یوتیوب را هرکدام در یک خط بفرست؛ /production وضعیت صف را نشان می‌دهد. /discover SEO برای کشف رسمی است (نیازمند اتصال API). تو فقط سناریو را تأیید و گویندگی می‌کنی؛ تصویر و تدوین با سیستم است. منبعِ غیرقابل‌دسترسی نیازمند متن است. لینک تکی هم برای پژوهش دستی پذیرفته می‌شود.",
                 {
                     "keyboard": [
                         [{"text": "ایده جدید"}, {"text": "فهرست ایده‌ها"}],
@@ -206,6 +208,106 @@ class TelegramGateway:
                     "resize_keyboard": True,
                 },
             )
+        if text == "/production":
+            response = self.studio.get("/production/status", headers=actor)
+            response.raise_for_status()
+            data = response.json()
+            labels = {
+                "needs_source": "نیازمند متن منبع",
+                "queued": "در صف",
+                "processing": "در حال تولید سناریو",
+                "script_ready": "سناریو آماده",
+                "failed": "متوقف؛ نیازمند بررسی",
+                "held": "متوقف به‌علت شواهد یا امتیاز ضعیف",
+            }
+            return (
+                "صف تولید (نمایش ۳۰ مورد آخر):\n"
+                + "\n".join(
+                    f"کار #{t['id']}، ایدهٔ #{t['item_id']}: {labels.get(t['state'], t['state'])}"
+                    for t in data["tasks"][-30:]
+                )
+                + "\nلینک تنها در صورت دسترسی به توضیحات یا رونوشت قابل پژوهش است."
+            )
+        if text.startswith("/discover "):
+            response = self.studio.post(
+                "/youtube/discover", json={"query": text[10:].strip()}, headers=actor
+            )
+            if response.status_code != 200:
+                return "کشف یوتیوب فعال نیست؛ کلید API رسمی و دسترسی شبکه لازم است. لینک‌ها را دسته‌ای بفرست؛ آمار بازدید حدس زده نمی‌شود."
+            return f"{len(response.json()['tasks'])} منبع در بازهٔ ۳۰ روز اخیر بر اساس بازدید جست‌وجو وارد صف شد؛ تحلیل بر پایهٔ توضیحات است، نه تماشای ویدئو."
+        if text.startswith("/retryproduction "):
+            task_id = text[17:].strip()
+            if not task_id.isdigit():
+                return "شناسه کار لازم است."
+            response = self.studio.post(f"/production/tasks/{task_id}/retry", headers=actor)
+            return (
+                "کار دوباره در صف قرار گرفت."
+                if response.status_code == 200
+                else "کار قابل تکرار نیست؛ ابتدا منبع یا وضعیت را بررسی کن."
+            )
+        if text.startswith("/source "):
+            heading, _, source = text.partition("\n")
+            item_id = heading[8:].strip()
+            if not item_id.isdigit() or len(source) < 80:
+                return "قالب: /source شناسه، سپس در خط بعد توضیحات یا رونوشت مجاز (حداقل ۸۰ نویسه)."
+            response = self.studio.put(
+                f"/items/{item_id}/evidence",
+                json={
+                    "text": source,
+                    "kind": "description",
+                    "provenance": "User-provided description via backlog; not a watched video",
+                },
+                headers=actor,
+            )
+            return (
+                "متن منبع ثبت شد؛ صف آن را برای سناریونویسی بررسی می‌کند."
+                if response.status_code == 200
+                else "متن ثبت نشد؛ شناسه، حجم و وضعیت منبع را بررسی کن."
+            )
+        links = text.removeprefix("/bulk").strip().splitlines()
+        if text.startswith("/bulk") or (
+            len(links) > 1 and all(line.strip().startswith("https://") for line in links)
+        ):
+            if not 1 <= len(links) <= 200:
+                return "هر دسته باید ۱ تا ۲۰۰ لینک داشته باشد؛ هر لینک در یک خط."
+            response = self.studio.post(
+                "/production/import",
+                json={"entries": [{"url": line.strip()} for line in links]},
+                headers=actor,
+            )
+            if response.status_code != 200:
+                return "دسته ثبت نشد؛ لینک‌های معتبر یوتیوب را هرکدام در یک خط بفرست."
+            return f"{len(response.json()['tasks'])} ورودی ثبت یا بازیابی شد؛ لینک تکراری کار تازه نمی‌سازد. /production وضعیت صف را نشان می‌دهد. منابع بدون متن متوقف می‌مانند."
+        if text.startswith("/visuals "):
+            script_id = text[9:].strip()
+            if not script_id.isdigit():
+                return "شناسه سناریو لازم است."
+            response = self.studio.post(f"/scripts/{script_id}/visuals", headers=actor)
+            if response.status_code != 200:
+                return "تولید تصویر انجام نشد؛ نسخهٔ جاری سناریو باید تأیید باشد."
+            data = response.json()
+            if data["state"] != "ready":
+                return "تصویر در حال تولید است؛ درخواست تکراری ساخته نمی‌شود."
+            media = self.studio.get(f"/assets/{data['asset_id']}/file", headers=actor)
+            media.raise_for_status()
+            if len(media.content) > 45 * 1024**2:
+                return "تصویر آماده است؛ فایل برای ارسال تلگرام بزرگ است."
+            reply = BotReply(
+                "تصویر متحرک فارسی آماده است؛ این نمایش شماتیک است و ضبط واقعی سایت نیست. فقط روایت سناریو را با صدای خودت ضبط کن.",
+                {
+                    "inline_keyboard": [
+                        [{"text": "ارسال صدای خودم", "callback_data": f"voiceupload:{script_id}"}],
+                        [
+                            {
+                                "text": "ساخت ویدئو با صدای من",
+                                "callback_data": f"preview:{script_id}",
+                            }
+                        ],
+                    ]
+                },
+            )
+            reply.video_preview = media.content
+            return reply
         if text.startswith("/preview "):
             script_id = text.removeprefix("/preview ").strip()
             if not script_id.isdigit():
@@ -215,15 +317,20 @@ class TelegramGateway:
                 return "رسانه‌های سناریو پیدا نشد."
             voice = [a for a in assets.json() if a["kind"] == "voice" and a["state"] == "processed"]
             screen = [a for a in assets.json() if a["kind"] == "screen"]
-            if not voice or not screen:
+            if not voice:
                 return BotReply(
-                    "برای پیش‌نمایش، صدای پردازش‌شده و ضبط صفحهٔ همین سناریو لازم است.",
+                    "فقط صدای خودت را برای همین سناریو بفرست؛ تصویر به‌صورت خودکار ساخته می‌شود.",
                     {
                         "inline_keyboard": [
                             [{"text": "بارگذاری رسانه", "callback_data": f"assets:{script_id}"}]
                         ]
                     },
                 )
+            if not screen:
+                generated = self.studio.post(f"/scripts/{script_id}/visuals", headers=actor)
+                if generated.status_code != 200 or generated.json()["state"] != "ready":
+                    return "تصویر هنوز آماده نیست؛ دوباره وضعیت را بررسی کن."
+                screen = [{"id": generated.json()["asset_id"]}]
             response = self.studio.post(
                 f"/scripts/{script_id}/preview",
                 json={"voice_asset_id": voice[-1]["id"], "screen_asset_id": screen[-1]["id"]},
@@ -279,7 +386,7 @@ class TelegramGateway:
             data = response.json()
             if command == "/assets":
                 return BotReply(
-                    "نوع فایل را انتخاب کن. اصل فایل خصوصی و محفوظ می‌ماند.",
+                    "فقط صدای خودت کافی است؛ تصویر خودکار ساخته می‌شود. ضبط صفحه اختیاری است.",
                     {
                         "inline_keyboard": [
                             [
@@ -287,7 +394,10 @@ class TelegramGateway:
                                     "text": "صدای ضبط‌شدهٔ خودم",
                                     "callback_data": f"voiceupload:{script_id}",
                                 },
-                                {"text": "ضبط صفحه", "callback_data": f"screenupload:{script_id}"},
+                                {
+                                    "text": "ضبط صفحهٔ اختیاری",
+                                    "callback_data": f"screenupload:{script_id}",
+                                },
                             ],
                             [{"text": "ساخت پیش‌نمایش", "callback_data": f"preview:{script_id}"}],
                         ]
@@ -364,10 +474,11 @@ class TelegramGateway:
             if result.status_code != 200:
                 return "این نسخه دیگر در انتظار تأیید نیست؛ نسخهٔ تازه را بررسی کن."
             return BotReply(
-                "همین نسخهٔ سناریو تأیید شد. حالا می‌توانی صدای واقعی خودت و ضبط صفحه را بارگذاری کنی. هیچ انتشار خودکاری انجام نمی‌شود.",
+                "سناریو تأیید شد. تصویر را سیستم می‌سازد؛ فقط صدای واقعی خودت را ضبط کن. انتشار خودکار نیست.",
                 {
                     "inline_keyboard": [
-                        [{"text": "بارگذاری رسانه", "callback_data": f"assets:{data['id']}"}]
+                        [{"text": "ساخت تصویر متحرک", "callback_data": f"visuals:{data['id']}"}],
+                        [{"text": "ارسال صدای خودم", "callback_data": f"voiceupload:{data['id']}"}],
                     ]
                 },
             )

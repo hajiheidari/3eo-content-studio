@@ -5,14 +5,19 @@ from pathlib import Path
 from .media import MediaError, execute, inspect
 
 
-def render_preview(screen: Path, voice: Path, destination: Path, planned_seconds: float):
+def render_preview(
+    screen: Path, voice: Path, destination: Path, planned_seconds: float, generated=False
+):
     audio = inspect(voice, "voice")
     video = inspect(screen, "screen")
     duration = audio["duration_seconds"]
     if duration > 90:
         raise MediaError("Preview narration must be at most 90 seconds")
-    if video["duration_seconds"] + 0.2 < duration:
+    if not generated and video["duration_seconds"] + 0.2 < duration:
         raise MediaError("Screen recording is shorter than narration; supply a complete recording")
+    timing = (
+        f"setpts={duration / video['duration_seconds']:.8f}*(PTS-STARTPTS)," if generated else ""
+    )
     execute(
         [
             "ffmpeg",
@@ -40,7 +45,8 @@ def render_preview(screen: Path, voice: Path, destination: Path, planned_seconds
             "-map",
             "1:a:0",
             "-vf",
-            "scale=1080:1920:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p",
+            timing
+            + "scale=1080:1920:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p",
             "-c:v",
             "libx264",
             "-preset",
@@ -87,4 +93,6 @@ def render_preview(screen: Path, voice: Path, destination: Path, planned_seconds
         "planned_seconds": planned_seconds,
         "duration_matches_script": abs(duration - planned_seconds) <= max(3, planned_seconds * 0.2),
         "publication": False,
+        "generated_visuals": generated,
+        "scene_timing": "proportional; not speech-aligned" if generated else "source recording",
     }

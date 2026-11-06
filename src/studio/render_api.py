@@ -182,12 +182,13 @@ def register_render(app, sessions, authorized, root):
             s.commit()
             job_id = job.id
             planned = json.loads(script.content)["duration_seconds"]
+            generated = json.loads(screen.metadata_json).get("generated", False)
             path = target(job)
             render_root.mkdir(exist_ok=True, mode=0o700)
             path.parent.mkdir(exist_ok=True, mode=0o700)
         path.unlink(missing_ok=True)
         try:
-            metadata = render_preview(original_screen, original_voice, path, planned)
+            metadata = render_preview(original_screen, original_voice, path, planned, generated=generated)
             with path.open("rb") as output:
                 digest = hashlib.file_digest(output, "sha256").hexdigest()
         except MediaError as exc:

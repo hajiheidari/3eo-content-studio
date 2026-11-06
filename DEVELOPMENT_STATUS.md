@@ -19,7 +19,7 @@ CPU runtime llama.cpp b12129 is verified and private. Four threads, one slot, 81
 See docs/LOCAL_AI.md for complete setup and startup. Network/model blockers are now resolved.
 
 ## Evidence
-121 tests pass; Ruff and SQLite migration/schema consistency pass (revision 0007).
+133 tests pass; Ruff and SQLite migration/schema consistency pass (revision 0008).
 Tests cover URL/SSRF/body limits, metadata, safe feeds, source/context isolation, plain-text
 intake, provider schemas/failures, research quality gates, scoring, audits, callbacks, Telegram
 authorization, timezone, outbox/restart behavior, existing-data migrations and artifact integrity.
@@ -100,3 +100,25 @@ acceptance fixtures are test patterns/signals in temporary test databases, not t
 schema is current. See docs/MEDIA_WORKFLOW.md. Real end-to-end acceptance waits for the founder's
 own recorded narration and authorized screen recording. ASR/editable RTL subtitles, advanced
 motion/cursor templates, dashboard and production hardening remain pending.
+
+
+## Narration-only direction implemented (2026-11-06)
+The founder no longer needs to screen-record. Added an original RTL educational motion-card
+renderer, private silent visual drafts and automatic voice-upload -> visual generation -> MP4
+assembly. Generated scene timing is proportional, not speech-aligned; advanced motion and ASR
+subtitles remain pending. The existing real script 2 produces a genuine silent 55-second draft.
+No founder speech or approved final video is claimed.
+
+Added a persistent 200-entry source backlog, 100-link TXT/multiline Telegram intake, deduplication,
+source-blocked states, bounded sequential background research/script drafting, quality holds,
+explicit retries, truthful system automatic-selection audits, and durable script delivery.
+Founder approval remains required for the exact script and video. Migration 0008 is current.
+
+Official YouTube recent/view-count search, description metadata and once-per-Tehran-day discovery
+are implemented behind an optional official API key. The key is absent; actual YouTube oEmbed
+access still fails with proxy 403. Discovery and full-video/transcript access are NOT demonstrated.
+100 links alone do not grant source-text access. See docs/FOUNDER_NARRATION_WORKFLOW.md for setup,
+limits and acceptance evidence. No paid calls, publication, production or Espadna changes.
+
+Final verification: 133 tests pass, Ruff and Alembic schema checks pass. The actual silent visual
+draft and its narration text were delivered to the approved private Telegram user.

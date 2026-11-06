@@ -3,7 +3,7 @@
 Private, approval-driven Persian SEO research and production system. This branch implements
 the manual-link Scout workflow and private Telegram worker; live integrations require setup.
 See [status](DEVELOPMENT_STATUS.md), [architecture](ARCHITECTURE.md) and [brief](REQUIREMENTS.md).
-Script drafts and revision approval are now implemented; basic private media/preview export is implemented; subtitles, advanced motion and the dashboard remain pending. No production deployment is authorized.
+The founder reviews scripts and records narration; the studio generates basic original Persian motion visuals, cleans audio and assembles private video previews. Bulk sources and an optional official YouTube discovery adapter are implemented. Discovery is not currently connected. Subtitles, advanced motion and the dashboard remain pending. No production deployment is authorized.
 
 ## Local development
 Python 3.12+ and uv required. From this repository:
@@ -100,3 +100,10 @@ processed audio preview, then request «ساخت پیش‌نمایش». The basi
 Final-video approval is separate and exact; exported MP4 stays private for manual publication.
 No founder media/video has been validated yet; test-signal renders are not personal videos.
 See [media workflow](docs/MEDIA_WORKFLOW.md) for API, resource limits and remaining scope.
+
+## Narration-only production
+See [the current workflow](docs/FOUNDER_NARRATION_WORKFLOW.md). Send a TXT file of 1–200 YouTube
+links or a multiline message. `/production` shows the durable backlog; `/discover QUERY` requires
+official API setup. Links without accessible source text wait instead of producing invented
+research. After script approval, `/visuals ID` makes a silent RTL motion draft. Send your voice;
+the bot assembles a video automatically. No founder screen recording is required.
