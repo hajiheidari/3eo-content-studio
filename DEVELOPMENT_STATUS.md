@@ -127,3 +127,17 @@ Reusable environment draft saved: optional STUDIO_YOUTUBE_API_KEY binding restri
 www.googleapis.com, existing domains preserved, refreshed dependency checks and startup
 instructions. Save confirmed; not published/applied and no API key supplied. Current services
 remain development-only. Publishing/restoration requires restarting and rechecking the bot.
+
+
+## Remotion design prototype (2026-11-06)
+The founder rejected the original text-card visual quality. Added a separate Remotion 4.0.541
+project in motion-studio with a silent 15-second internal-link explainer: page entrances, drawn
+curves, cursor interaction, path-following packet, destination highlight and camera reframing.
+Includes shaped Persian local fonts, editable named timeline elements and a connected PageCard
+composition. No copied source footage, generated speech, paid calls or production deployment.
+
+This prototype is not yet approved or integrated into the bot's automatic renderer. It is a
+visual design review, not evidence that arbitrary scripts now produce professional motion.
+ESLint/TypeScript and actual Chromium still-frame inspections pass; Studio HTTP responds 200.
+Full MP4 export was not requested and was not run. Node preview validation is added to CI.
+See motion-studio/README.md. The existing 133-test Python workflow is unchanged.
