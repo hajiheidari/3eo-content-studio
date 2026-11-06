@@ -1,0 +1,80 @@
+import re
+import unicodedata
+from datetime import datetime
+from difflib import SequenceMatcher
+from urllib.parse import parse_qs, urlsplit
+from zoneinfo import ZoneInfo
+
+WEIGHTS = dict(relevance=25, usefulness=20, brand_fit=20, freshness=15, short_video=10, evidence=10)
+
+
+def normalize_url(value: str) -> tuple[str, str, str]:
+    if len(value) > 2048 or any(c.isspace() for c in value):
+        raise ValueError("URL too long")
+    url = urlsplit(value)
+    if url.scheme != "https" or url.netloc.lower() != (url.hostname or ""):
+        raise ValueError("An HTTPS platform URL without credentials or port is required")
+    host = (url.hostname or "").lower()
+    if url.fragment:
+        raise ValueError("Fragments are unsupported")
+    if host in {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"}:
+        if host == "youtu.be":
+            video = url.path.lstrip("/")
+        elif url.path == "/watch":
+            ids = parse_qs(url.query).get("v", [])
+            if len(ids) != 1:
+                raise ValueError("Exactly one YouTube ID is required")
+            video = ids[0]
+        elif match := re.fullmatch(r"/(?:shorts|embed)/([A-Za-z0-9_-]{11})/?", url.path):
+            video = match[1]
+        else:
+            raise ValueError("Unsupported YouTube URL")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{11}", video):
+            raise ValueError("Invalid YouTube ID")
+        return "youtube", video, f"https://www.youtube.com/watch?v={video}"
+    if host in {"instagram.com", "www.instagram.com"}:
+        match = re.fullmatch(r"/(?:reel|p)/([A-Za-z0-9_-]{1,100})/?", url.path)
+        if match:
+            video = match[1]
+            return "instagram", video, f"https://www.instagram.com/p/{video}/"
+    raise ValueError("Unsupported platform URL")
+
+
+def rank(criteria: dict[str, float], weights: dict[str, int] = WEIGHTS) -> float:
+    if set(criteria) != set(weights) or sum(weights.values()) != 100:
+        raise ValueError("All criteria and weights totaling 100 are required")
+    if any(v < 0 for v in weights.values()) or any(not 0 <= v <= 100 for v in criteria.values()):
+        raise ValueError("Scores must be between 0 and 100")
+    return round(sum(criteria[k] * w / 100 for k, w in weights.items()), 2)
+
+
+def report_day(now: datetime) -> str | None:
+    if now.tzinfo is None:
+        raise ValueError("Timezone-aware time required")
+    local = now.astimezone(ZoneInfo("Asia/Tehran"))
+    return local.date().isoformat() if local.hour >= 5 else None
+
+
+TRANSITIONS = {
+    "DISCOVERED": {"RESEARCHED", "REJECTED"},
+    "RESEARCHED": {"IDEA_APPROVED", "REJECTED", "SAVED", "MORE_RESEARCH"},
+    "SAVED": {"IDEA_APPROVED", "REJECTED", "MORE_RESEARCH"},
+    "MORE_RESEARCH": {"RESEARCHED", "REJECTED"},
+    "IDEA_APPROVED": {"SCRIPT_DRAFT"},
+    "SCRIPT_DRAFT": {"SCRIPT_APPROVED", "REVISION_REQUESTED"},
+    "REVISION_REQUESTED": {"SCRIPT_DRAFT"},
+    "SCRIPT_APPROVED": {"AWAITING_ASSETS"},
+}
+
+
+def text_similarity(first: str, second: str) -> float:
+    """Advisory near-duplicate signal, never automatic approval/rejection."""
+
+    def clean(value):
+        value = unicodedata.normalize("NFKC", value).translate(str.maketrans("يك", "یک"))
+        return " ".join(re.findall(r"\w+", value.casefold()))[:4000]
+
+    a, b = clean(first), clean(second)
+    if not a or not b:
+        return 0
+    return round(SequenceMatcher(None, a, b).ratio(), 3)
