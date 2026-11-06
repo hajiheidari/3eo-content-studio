@@ -141,3 +141,12 @@ visual design review, not evidence that arbitrary scripts now produce profession
 ESLint/TypeScript and actual Chromium still-frame inspections pass; Studio HTTP responds 200.
 Full MP4 export was not requested and was not run. Node preview validation is added to CI.
 See motion-studio/README.md. The existing 133-test Python workflow is unchanged.
+
+
+## Remote preview access workaround (2026-11-06)
+Founder reported a white page at the localhost Studio link. Loopback routes still returned
+HTTP 200; remote viewer access was not established. Rendered the existing prototype into an
+actual 15-second H.264 MP4 (1080×1920, 450 frames, 2,518,814 bytes), verified it with ffprobe,
+and received private Telegram delivery confirmation. This is a silent design-review sample,
+not an approved final asset or a production deployment. The live remote Studio access issue
+is not claimed fixed; use the delivered file for review.

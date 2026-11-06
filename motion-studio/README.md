@@ -15,7 +15,11 @@ npm run dev -- --no-open
 ```
 
 Open the exact Studio address printed by the command, then select `InternalLinks`. The current
-development instance uses http://localhost:3000/InternalLinks. `PageCard` is also registered as
+development instance uses http://localhost:3000/InternalLinks inside the cloud workspace only.
+This address is not a verified user-accessible preview: the founder reported a blank page.
+Do not present a successful loopback/browser smoke test as evidence the remote viewer can open
+it. A 15-second MP4 was rendered and delivered through the authorized private Telegram bot
+for this visual review instead. `PageCard` is also registered as
 a connected composition for independent editing. Headings, page cards, links, cursor and camera
 are named timeline layers. Fonts are local, with the upstream DejaVu license included. There
 are no remote images, paid calls, synthetic speech or source-video assets.
