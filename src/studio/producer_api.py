@@ -85,7 +85,16 @@ def register_producer(app, sessions, authorized, provider):
                         )
                     )
                     session.flush()
-            if old and item.status in {"SCRIPT_GENERATING", "SCRIPT_DRAFT", "SCRIPT_APPROVED"}:
+            if old and item.status in {
+                "SCRIPT_GENERATING",
+                "SCRIPT_DRAFT",
+                "SCRIPT_APPROVED",
+                "AWAITING_ASSETS",
+                "EDITING",
+                "PREVIEW_READY",
+                "FINAL_APPROVED",
+                "EXPORTED",
+            }:
                 return view(old)
             if item.status not in {"IDEA_APPROVED", "REVISION_REQUESTED"} or not item.research:
                 raise HTTPException(409, "Approve the idea before generating a script")
@@ -163,7 +172,7 @@ def register_producer(app, sessions, authorized, provider):
             item = session.get(Item, script.item_id)
             if script.content_hash != body.content_hash or latest(session, item.id).id != script.id:
                 raise HTTPException(409, "Review the current exact script revision")
-            if script.state == "approved" and item.status == "SCRIPT_APPROVED":
+            if script.state == "approved" and item.status in {"SCRIPT_APPROVED", "AWAITING_ASSETS"}:
                 return {"status": "SCRIPT_APPROVED", "duplicate": True}
             if script.state != "ready" or item.status != "SCRIPT_DRAFT":
                 raise HTTPException(409, "Script is not awaiting approval")
@@ -185,6 +194,11 @@ def register_producer(app, sessions, authorized, provider):
             if latest(session, item.id).id != script.id or item.status not in {
                 "SCRIPT_DRAFT",
                 "SCRIPT_APPROVED",
+                "AWAITING_ASSETS",
+                "EDITING",
+                "PREVIEW_READY",
+                "FINAL_APPROVED",
+                "EXPORTED",
             }:
                 raise HTTPException(409, "Revision request must target the current script")
             previous = item.status

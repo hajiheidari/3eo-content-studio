@@ -8,9 +8,10 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: '3.12'
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg util-linux
       - run: uv sync --frozen
       - run: uv run pytest -q
-      - run: uv run ruff check src tests migrations
+      - run: uv run ruff check src tests scripts migrations
       - run: uv run alembic upgrade head
       - run: uv run alembic upgrade head
       - run: uv run alembic check

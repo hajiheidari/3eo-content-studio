@@ -100,6 +100,8 @@ class Conversation(Base):
     item_id: Mapped[int] = mapped_column(ForeignKey("source_items.id"))
     evidence_kind: Mapped[str] = mapped_column(String(30), default="description")
     pending_script_id: Mapped[int | None] = mapped_column()
+    upload_script_id: Mapped[int | None] = mapped_column()
+    upload_kind: Mapped[str | None] = mapped_column(String(20))
 
 
 class ScriptDraft(Base):
@@ -116,3 +118,39 @@ class ScriptDraft(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
+
+
+class MediaAsset(Base):
+    __tablename__ = "media_assets"
+    __table_args__ = (UniqueConstraint("script_id", "kind", "sha256"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    script_id: Mapped[int] = mapped_column(ForeignKey("scripts.id"))
+    script_hash: Mapped[str] = mapped_column(String(64))
+    kind: Mapped[str] = mapped_column(String(20))
+    storage_key: Mapped[str] = mapped_column(String(32), unique=True)
+    sha256: Mapped[str] = mapped_column(String(64))
+    byte_count: Mapped[int] = mapped_column()
+    mime_type: Mapped[str] = mapped_column(String(100))
+    metadata_json: Mapped[str] = mapped_column(Text)
+    state: Mapped[str] = mapped_column(String(30), default="stored")
+    processing_json: Mapped[str | None] = mapped_column(Text)
+    processing_started: Mapped[float | None] = mapped_column(Float)
+    actor: Mapped[str] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class RenderJob(Base):
+    __tablename__ = "rendering_jobs"
+    __table_args__ = (UniqueConstraint("script_id", "voice_asset_id", "screen_asset_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    script_id: Mapped[int] = mapped_column(ForeignKey("scripts.id"))
+    script_hash: Mapped[str] = mapped_column(String(64))
+    voice_asset_id: Mapped[int] = mapped_column(ForeignKey("media_assets.id"))
+    screen_asset_id: Mapped[int] = mapped_column(ForeignKey("media_assets.id"))
+    storage_key: Mapped[str] = mapped_column(String(32), unique=True)
+    state: Mapped[str] = mapped_column(String(30))
+    sha256: Mapped[str | None] = mapped_column(String(64))
+    metadata_json: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[float] = mapped_column(Float)

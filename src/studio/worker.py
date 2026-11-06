@@ -3,7 +3,9 @@
 import argparse
 import json
 import os
+import re
 import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -15,6 +17,7 @@ from .domain import report_day
 from .reports import format_report, report_keyboard
 from .storage import BotCursor, BotUpdate, Delivery, Report, database
 from .telegram import TelegramGateway
+from .telegram_media import receive_media
 
 
 class DeliveryUncertain(RuntimeError):
@@ -33,11 +36,16 @@ class TelegramAPI:
         self.token = token
         self.client = client or httpx.Client(timeout=35)
 
-    def call(self, method, payload):
+    def call(self, method, payload, files=None):
         # All methods are fixed by application code. Never log token-bearing URLs.
         url = f"https://api.telegram.org/bot{self.token}/{method}"
         try:
-            with self.client.stream("POST", url, json=payload, follow_redirects=False) as response:
+            with self.client.stream(
+                "POST",
+                url,
+                follow_redirects=False,
+                **({"data": payload, "files": files} if files else {"json": payload}),
+            ) as response:
                 raw = bytearray()
                 for chunk in response.iter_bytes():
                     raw.extend(chunk)
@@ -53,6 +61,71 @@ class TelegramAPI:
                 return data["result"]
         except (httpx.HTTPError, ValueError, KeyError, TypeError):
             raise DeliveryUncertain("Telegram request not confirmed") from None
+
+    @contextmanager
+    def download(self, file_id, expected_size):
+        if not isinstance(file_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,300}", file_id):
+            raise ValueError("Invalid Telegram file identifier")
+        data = self.call("getFile", {"file_id": file_id})
+        path = data.get("file_path", "")
+        if (
+            not re.fullmatch(r"[A-Za-z0-9_/-]+\.[A-Za-z0-9]{1,8}", path)
+            or path.startswith("/")
+            or ".." in path
+        ):
+            raise ValueError("Unsafe Telegram file path")
+        try:
+            with self.client.stream(
+                "GET",
+                f"https://api.telegram.org/file/bot{self.token}/{path}",
+                follow_redirects=False,
+            ) as response:
+                if response.status_code != 200:
+                    raise DeliveryUncertain("Telegram file unavailable")
+
+                def bounded():
+                    started = time.monotonic()
+                    count = 0
+                    for block in response.iter_bytes(chunk_size=65536):
+                        count += len(block)
+                        if time.monotonic() - started > 120:
+                            raise DeliveryUncertain("Telegram file transfer timed out")
+                        if count > expected_size or count > 20 * 1024**2:
+                            raise DeliveryUncertain("Telegram file exceeds declared limit")
+                        yield block
+                    if count != expected_size:
+                        raise DeliveryUncertain("Telegram file size mismatch")
+
+                yield bounded()
+        except httpx.HTTPError:
+            raise DeliveryUncertain("Telegram file transfer failed") from None
+
+    def send_audio(self, recipient, content):
+        result = self.call(
+            "sendAudio",
+            {"chat_id": str(recipient), "caption": "پیش‌نمایش صدای خودت؛ اصل ضبط محفوظ است."},
+            files={"audio": ("3eo-voice-preview.mp3", content, "audio/mpeg")},
+        )
+        if not isinstance(result, dict) or not isinstance(result.get("message_id"), int):
+            raise DeliveryUncertain("Audio delivery not confirmed")
+        return str(result["message_id"])
+
+    def send_video(self, recipient, content, document=False):
+        method = "sendDocument" if document else "sendVideo"
+        field = "document" if document else "video"
+        result = self.call(
+            method,
+            {
+                "chat_id": str(recipient),
+                "caption": "خروجی خصوصی 3EO؛ انتشار خودکار انجام نشده است.",
+            },
+            files={
+                field: ("3eo-export.mp4" if document else "3eo-preview.mp4", content, "video/mp4")
+            },
+        )
+        if not isinstance(result, dict) or not isinstance(result.get("message_id"), int):
+            raise DeliveryUncertain("Video delivery not confirmed")
+        return str(result["message_id"])
 
     def updates(self, offset):
         return self.call(
@@ -112,8 +185,10 @@ class Worker:
                     session.commit()
             if handled is None:
                 state = "handled"
+                recipient = None
                 try:
                     self.gateway.authorize(event)
+                    recipient = self.gateway.recipient(event)
                     if "callback_query" in event:
                         try:
                             self.telegram.answer_callback(event["callback_query"]["id"])
@@ -127,8 +202,21 @@ class Worker:
                     progress = self.gateway.progress_message(event)
                     if progress:
                         self.telegram.send(self.gateway.recipient(event), progress)
-                    reply = self.gateway.handle(event)
+                    message = self.gateway.message(event)
+                    if any(message.get(key) for key in ["voice", "audio", "video", "document"]):
+                        self.telegram.send(
+                            self.gateway.recipient(event), "فایل دریافت شد؛ در حال بررسی آن هستم."
+                        )
+                        reply = receive_media(self.gateway, self.studio, self.telegram, event)
+                    else:
+                        reply = self.gateway.handle(event)
                     recipient = self.gateway.recipient(event)
+                    if getattr(reply, "video_preview", None):
+                        self.telegram.send_video(
+                            recipient,
+                            reply.video_preview,
+                            document=getattr(reply, "video_document", False),
+                        )
                     keyboard = getattr(reply, "keyboard", None)
                     parts = getattr(reply, "parts", None) or [str(reply)]
                     for index, part in enumerate(parts):
@@ -136,11 +224,21 @@ class Worker:
                             self.telegram.send(recipient, part, keyboard=keyboard)
                         else:
                             self.telegram.send(recipient, part)
+                    if getattr(reply, "audio_preview", None):
+                        self.telegram.send_audio(recipient, reply.audio_preview)
                 except PermissionError:
                     state = "ignored"
                 except Exception:
                     # No exception details: upstream request objects may contain credentials.
                     state = "uncertain"
+                    if recipient is not None:
+                        try:
+                            self.telegram.send(
+                                recipient,
+                                "پاسخ نهایی درخواست تأیید نشد؛ وضعیت پروژه را بررسی کن. اگر فایل فرستادی، اصل آن در تلگرام محفوظ است.",
+                            )
+                        except Exception:
+                            pass
                 with self.sessions() as session:
                     session.get(BotUpdate, update_id).status = state
                     session.commit()

@@ -3,7 +3,7 @@
 Private, approval-driven Persian SEO research and production system. This branch implements
 the manual-link Scout workflow and private Telegram worker; live integrations require setup.
 See [status](DEVELOPMENT_STATUS.md), [architecture](ARCHITECTURE.md) and [brief](REQUIREMENTS.md).
-Script drafts and revision approval are now implemented; video production and the dashboard are not. No production deployment is authorized.
+Script drafts and revision approval are now implemented; basic private media/preview export is implemented; subtitles, advanced motion and the dashboard remain pending. No production deployment is authorized.
 
 ## Local development
 Python 3.12+ and uv required. From this repository:
@@ -56,7 +56,7 @@ uv run python -m studio.worker
 `--once` runs one cycle and exits nonzero on failure. Commands: send a URL; `/metadata ID`;
 `/transcript ID` followed by a provenance line and the authorized transcript; `/analyze ID`;
 `/today`; `/ideas`; `/idea ID`; `/approve ID`; `/reject ID`; `/save ID`; `/research ID` (request more research).
-Only approved users in private chats are accepted. No automatic publication or script generation.
+Only approved users in private chats are accepted. Script generation, revision approval and private media preview are available after idea approval. No automatic publication.
 
 The worker checks for current-day reports after 05:00 Asia/Tehran. Healthy cycle latency can
 include a 20-second long poll and a five-second wait; exact-second dispatch is not guaranteed.
@@ -91,3 +91,12 @@ storyboard, then approve that exact version or press «درخواست اصلاح
 /scriptview SCRIPT_ID retrieves the cached draft. This does not create a video or publish.
 See [script workflow and limits](docs/SCRIPT_WORKFLOW.md). Local CPU script generation can
 currently take several minutes; progress is acknowledged before inference.
+
+
+## Own voice and screen-recording preview
+For an approved script, use «بارگذاری رسانه» in the private bot. Confirm the recording/rights
+and send your own narration plus screen recording (Telegram max 20 MiB each). Listen to the
+processed audio preview, then request «ساخت پیش‌نمایش». The basic vertical MP4 has no subtitles.
+Final-video approval is separate and exact; exported MP4 stays private for manual publication.
+No founder media/video has been validated yet; test-signal renders are not personal videos.
+See [media workflow](docs/MEDIA_WORKFLOW.md) for API, resource limits and remaining scope.

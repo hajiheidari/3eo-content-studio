@@ -9,7 +9,7 @@ uv run alembic upgrade head
 uv run alembic check
 ```
 
-97 tests pass. Coverage includes URL/SSRF validation, canonical/advisory duplicates,
+121 tests pass. Coverage includes URL/SSRF validation, canonical/advisory duplicates,
 transcript/evidence gating, research validation, source-context isolation, plain-text intake,
 standalone text, new-idea reset, provider failures, concrete demonstration plan, scoring,
 optimistic approval writes/audits, safe metadata/feeds and response caps, Telegram sender
@@ -47,3 +47,12 @@ script-stage bypass prevention, Telegram revision notes and full Unicode multipa
 Live item 1 generated a stored 55-second script draft with three hooks and five scenes; its
 review/approval keyboard was delivered. Generation took 384.3s after a timeout-driven reduction
 in output verbosity. No actual script approval, recording, rendering or export is claimed.
+
+
+Media/render acceptance now uses real FFmpeg in temporary fixtures: originals remain byte-
+identical, audio preview stays private, invalid/silent/oversize/slow input fails safely, decoder
+children omit application credentials, and a genuine 1080×1920 H.264/AAC MP4 passes checksum,
+exact final-approval and manual-export gates. Tests cover stale preview/script and tampered
+outputs, dialogue upload selection, bounded Telegram transfers and video-before-controls order.
+The actual founder has not uploaded voice/screen assets yet; full personal-video validation,
+ASR/subtitles and advanced composition remain pending. CI installs ffmpeg and util-linux.

@@ -19,7 +19,7 @@ CPU runtime llama.cpp b12129 is verified and private. Four threads, one slot, 81
 See docs/LOCAL_AI.md for complete setup and startup. Network/model blockers are now resolved.
 
 ## Evidence
-97 tests pass; Ruff and SQLite migration/schema consistency pass (revision 0005).
+121 tests pass; Ruff and SQLite migration/schema consistency pass (revision 0007).
 Tests cover URL/SSRF/body limits, metadata, safe feeds, source/context isolation, plain-text
 intake, provider schemas/failures, research quality gates, scoring, audits, callbacks, Telegram
 authorization, timezone, outbox/restart behavior, existing-data migrations and artifact integrity.
@@ -49,7 +49,7 @@ use still requires founder fact checking and explicit idea approval; no automati
 Architecture, costs, security and deployment plan are documented. Production Ubuntu access
 and infrastructure inspection are still absent. No production or Espadna Sim commands were
 run. Runtime is cloud development only; processes must restart after a snapshot restore.
-M2–M4 remain pending: remaining producer/media/audio/video/subtitles, Remotion, dashboard,
+M2–M4 remain partial: subtitles, advanced Remotion production, dashboard,
 full hardening and controlled deployment. The entire original project is not complete.
 
 
@@ -62,9 +62,8 @@ fabricated Telegram callback), then verified as IDEA_APPROVED and confirmed thro
 
 Fixed a second failure mode: expired answerCallbackQuery/acknowledgement errors no longer
 skip the authorized approval action. Repeated approvals now return a clear already-recorded
-message with one transition. Approval messages explain that script/video generation remains
-unimplemented. Model, API and private worker were restarted only in this development machine.
-97 tests pass, including expired callback and repeated-approval regressions. Continuous bot
+message with one transition. At that milestone, approval messages explained the then-unimplemented production steps. Model, API and private worker were restarted only in this development machine.
+121 tests pass, including expired callback and repeated-approval regressions. Continuous bot
 availability still requires a persistent runtime; this ephemeral cloud task is not a permanent
 server deployment. Production deployment remains blocked on infrastructure inspection and
 explicit founder approval. Publishing/restoring the dev snapshot requires service restart.
@@ -81,7 +80,23 @@ notes as the next message, progress receipts and clear old-button responses.
 
 Real item 1 → script ID 2/revision 2 (55 seconds) → persisted draft → confirmed private Telegram
 delivery succeeded. First attempt timed out; tightened generation bounds completed in 384.3s.
-Draft approval remains pending. A repeated request reused ID 2 in 0.009s. 97 tests pass and
-schema check is clean at 0005. See docs/SCRIPT_WORKFLOW.md. This is the script portion of M2,
-not the complete producer: uploads, audio processing, subtitles, rendering and export remain
-unimplemented. No synthesized voice, public content, production or Espadna changes occurred.
+The founder has since approved this draft. A repeated request reused ID 2 in 0.009s.
+See docs/SCRIPT_WORKFLOW.md for the script milestone; the media milestone below extends it. No synthesized voice, public content, production or Espadna changes occurred.
+
+
+## M2 media/preview implementation
+The founder approved script 2 (actual state SCRIPT_APPROVED). Added secure private media
+upload, kind/stream/size/duration validation, rights/own-voice declaration, version/hash binding,
+original preservation and checksum deduplication. Conservative audio processing creates private
+WAV/MP3 previews with no silence/pitch/voice synthesis. Added bounded Telegram getFile streaming
+and audio preview delivery. No real founder voice/screen file is present yet.
+
+Implemented basic screen+founder-audio MP4 preview with real FFmpeg, 1080×1920 H.264/AAC,
+final video digest/latest-version approval and private manual export. Preview is sent before
+approval controls. Media replacements/revisions invalidate gates; mismatched narration duration
+cannot get final approval. No automatic publication or invented test narration. All rendered
+acceptance fixtures are test patterns/signals in temporary test databases, not this project.
+121 tests pass, including genuine codec output and security/resource checks. Revision 0007
+schema is current. See docs/MEDIA_WORKFLOW.md. Real end-to-end acceptance waits for the founder's
+own recorded narration and authorized screen recording. ASR/editable RTL subtitles, advanced
+motion/cursor templates, dashboard and production hardening remain pending.

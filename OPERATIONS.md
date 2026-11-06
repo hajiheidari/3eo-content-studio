@@ -43,3 +43,10 @@ model/API/worker per docs/LOCAL_AI.md after restoration. Do not tell users this 
 bot. Persistent production hosting requires a separate inspected/approved deployment.
 Expired callback UI acknowledgements are best effort and must not prevent authorized state
 transitions. Duplicate approval requests report existing state without duplicate audit writes.
+
+
+Media/runtime additions: ffmpeg, ffprobe and prlimit must be available. Schema head is 0007.
+Private originals, audio previews and render outputs live under .local/media and need backup
+with the DB; no static public serving. The process-local media slot assumes one API process.
+User rights/own-voice declarations are required; they are not forensic identity checks. Export
+requires exact final approval and never posts to a platform. See docs/MEDIA_WORKFLOW.md.

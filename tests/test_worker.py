@@ -269,3 +269,61 @@ def test_script_review_sends_every_part_and_keyboard_only_at_end(setup):
     assert "".join(message for _, message in telegram.sent[1:]) == text
     assert all(k is None for k in telegram.keyboards[:-1])
     assert telegram.keyboards[-1] == keyboard
+
+
+def test_telegram_file_path_cannot_escape_allowed_host():
+    def handler(request):
+        return httpx.Response(200, json={"ok": True, "result": {"file_path": "../../secret"}})
+
+    api = TelegramAPI("test", httpx.Client(transport=httpx.MockTransport(handler)))
+    with pytest.raises(ValueError, match="Unsafe"):
+        with api.download("file-id", 100) as stream:
+            list(stream)
+
+
+def test_telegram_download_enforces_declared_bytes():
+    def handler(request):
+        if request.method == "POST":
+            return httpx.Response(
+                200, json={"ok": True, "result": {"file_path": "voice/file_1.oga"}}
+            )
+        return httpx.Response(200, content=b"oversized")
+
+    api = TelegramAPI("test", httpx.Client(transport=httpx.MockTransport(handler)))
+    with pytest.raises(DeliveryUncertain, match="limit"):
+        with api.download("file-id", 3) as stream:
+            list(stream)
+
+
+def test_video_is_delivered_before_approval_controls(setup):
+    from studio.telegram import BotReply
+
+    sessions, studio, telegram = setup
+    order = []
+    telegram.send_video = lambda recipient, content, document=False: order.append("video")
+    original = telegram.send
+
+    def send(recipient, text, keyboard=None):
+        order.append("approval" if keyboard else "text")
+        return original(recipient, text, keyboard)
+
+    telegram.send = send
+    worker = Worker(sessions, studio, telegram, {123})
+    reply = BotReply(
+        "پیش‌نمایش",
+        {
+            "inline_keyboard": [
+                [{"text": "تأیید", "callback_data": "videoapprove:1:0123456789abcdef"}]
+            ]
+        },
+    )
+    reply.video_preview = b"private-video"
+    worker.gateway.handle = lambda event: reply
+    telegram.events = [
+        {
+            "update_id": 95,
+            "message": {"from": {"id": 123}, "chat": {"type": "private"}, "text": "/videoview 1"},
+        }
+    ]
+    worker.poll()
+    assert order == ["video", "approval"]

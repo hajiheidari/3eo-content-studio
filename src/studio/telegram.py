@@ -25,8 +25,18 @@ class TelegramGateway:
             return update.get("message", {})
         query = update["callback_query"]
         script_action = re.fullmatch(
-            r"(script|scriptview|scriptrevise):([1-9][0-9]{0,18})", query.get("data", "")
+            r"(script|scriptview|scriptrevise|assets|voiceupload|screenupload|confirmvoice|confirmscreen|preview|videoview|exportvideo):([1-9][0-9]{0,18})",
+            query.get("data", ""),
         )
+        video_approval = re.fullmatch(
+            r"videoapprove:([1-9][0-9]{0,18}):([a-f0-9]{16})", query.get("data", "")
+        )
+        if video_approval:
+            return {
+                "from": query.get("from", {}),
+                "chat": query.get("message", {}).get("chat", {}),
+                "text": f"/approvevideo {video_approval[1]} {video_approval[2]}",
+            }
         script_approval = re.fullmatch(
             r"scriptapprove:([1-9][0-9]{0,18}):([a-f0-9]{16})", query.get("data", "")
         )
@@ -34,7 +44,7 @@ class TelegramGateway:
             command = (
                 f"/approvescript {script_approval[1]} {script_approval[2]}"
                 if script_approval
-                else f"/{ {'script': 'script', 'scriptview': 'scriptview', 'scriptrevise': 'revisescript'}[script_action[1]] } {script_action[2]}"
+                else f"/{ {'script': 'script', 'scriptview': 'scriptview', 'scriptrevise': 'revisescript', 'assets': 'assets', 'voiceupload': 'voiceupload', 'screenupload': 'screenupload', 'confirmvoice': 'confirmvoice', 'confirmscreen': 'confirmscreen', 'preview': 'preview', 'videoview': 'videoview', 'exportvideo': 'exportvideo'}[script_action[1]] } {script_action[2]}"
             )
             return {
                 "from": query.get("from", {}),
@@ -111,9 +121,55 @@ class TelegramGateway:
         parts, keyboard = script_review(data)
         return BotReply(parts[0], keyboard, parts=parts)
 
+    def video_reply(self, data, actor, exported=False):
+        if data["state"] == "processing":
+            return "پیش‌نمایش در حال ساخته‌شدن است؛ کار تکراری شروع نمی‌شود."
+        if not data.get("sha256"):
+            return "پیش‌نمایش هنوز آماده نیست."
+        response = self.studio.get(
+            f"/renders/{data['id']}/file?variant={'export' if exported else 'preview'}",
+            headers=actor,
+        )
+        if response.status_code != 200:
+            return "فایل خروجی آماده یا تأیید نیست."
+        if len(response.content) > 45 * 1024**2:
+            return "خروجی از سقف ارسال خصوصی تلگرام بزرگ‌تر است؛ نسخهٔ کم‌حجم‌تر لازم است."
+        text = (
+            "خروجی تأییدشده برای انتشار دستی آماده است؛ خودکار منتشر نشده است."
+            if exported
+            else "پیش‌نمایش خصوصی آماده است: ۱۰۸۰×۱۹۲۰، صدای ضبط‌شدهٔ خودت، بدون زیرنویس یا انتشار خودکار. ویدئو را کامل ببین."
+        )
+        keyboard = None
+        if not exported:
+            if data["metadata"]["duration_matches_script"]:
+                keyboard = {
+                    "inline_keyboard": [
+                        [
+                            {
+                                "text": "تأیید همین ویدئو",
+                                "callback_data": f"videoapprove:{data['id']}:{data['sha256'][:16]}",
+                            }
+                        ],
+                        [{"text": "تغییر رسانه", "callback_data": f"assets:{data['script_id']}"}],
+                    ]
+                }
+            else:
+                text += " مدت صدا با سناریو مطابقت ندارد؛ برای تأیید نهایی ضبط کامل لازم است."
+                keyboard = {
+                    "inline_keyboard": [
+                        [{"text": "ارسال ضبط کامل", "callback_data": f"assets:{data['script_id']}"}]
+                    ]
+                }
+        reply = BotReply(text, keyboard)
+        reply.video_preview = response.content
+        reply.video_document = exported
+        return reply
+
     def progress_message(self, update):
         message = self.authorize(update)
         text = message.get("text", "").strip()
+        if text.startswith("/preview "):
+            return "در حال ساخت پیش‌نمایش با صدای خودت و ضبط صفحه هستم. هیچ انتشار خودکاری انجام نمی‌شود."
         if text.startswith("/script "):
             return (
                 "در حال آماده‌سازی سناریو برای بازبینی هستم؛ این مرحله ممکن است چند دقیقه طول بکشد."
@@ -149,6 +205,126 @@ class TelegramGateway:
                     ],
                     "resize_keyboard": True,
                 },
+            )
+        if text.startswith("/preview "):
+            script_id = text.removeprefix("/preview ").strip()
+            if not script_id.isdigit():
+                return "شناسه سناریو لازم است."
+            assets = self.studio.get(f"/scripts/{script_id}/assets", headers=actor)
+            if assets.status_code != 200:
+                return "رسانه‌های سناریو پیدا نشد."
+            voice = [a for a in assets.json() if a["kind"] == "voice" and a["state"] == "processed"]
+            screen = [a for a in assets.json() if a["kind"] == "screen"]
+            if not voice or not screen:
+                return BotReply(
+                    "برای پیش‌نمایش، صدای پردازش‌شده و ضبط صفحهٔ همین سناریو لازم است.",
+                    {
+                        "inline_keyboard": [
+                            [{"text": "بارگذاری رسانه", "callback_data": f"assets:{script_id}"}]
+                        ]
+                    },
+                )
+            response = self.studio.post(
+                f"/scripts/{script_id}/preview",
+                json={"voice_asset_id": voice[-1]["id"], "screen_asset_id": screen[-1]["id"]},
+                headers=actor,
+            )
+            if response.status_code != 200:
+                return "ساخت پیش‌نمایش انجام نشد؛ تأیید سناریو، مدت ضبط صفحه و کامل‌بودن صدای واقعی را بررسی کن."
+            return self.video_reply(response.json(), actor)
+        if text.startswith(("/videoview ", "/exportvideo ", "/approvevideo ")):
+            parts = text.split()
+            if len(parts) < 2 or not parts[1].isdigit():
+                return "شناسه ویدئو لازم است."
+            response = self.studio.get(f"/renders/{parts[1]}", headers=actor)
+            if response.status_code != 200:
+                return "ویدئو پیدا نشد."
+            data = response.json()
+            if parts[0] == "/videoview":
+                return self.video_reply(data, actor)
+            if parts[0] == "/approvevideo":
+                if len(parts) != 3 or not data.get("sha256") or parts[2] != data["sha256"][:16]:
+                    return "دکمه با محتوای ویدئو مطابقت ندارد."
+                result = self.studio.post(
+                    f"/renders/{data['id']}/approve", json={"sha256": data["sha256"]}, headers=actor
+                )
+                if result.status_code != 200:
+                    return "این ویدئو برای تأیید نهایی مناسب نیست یا نسخهٔ جدیدتری وجود دارد."
+                return BotReply(
+                    "همین ویدئو تأیید شد. می‌توانی فایل اصلی را برای انتشار دستی بگیری؛ چیزی منتشر نشده است.",
+                    {
+                        "inline_keyboard": [
+                            [
+                                {
+                                    "text": "دریافت فایل اصلی",
+                                    "callback_data": f"exportvideo:{data['id']}",
+                                }
+                            ]
+                        ]
+                    },
+                )
+            exported = self.studio.post(f"/renders/{data['id']}/export", headers=actor)
+            if exported.status_code != 200:
+                return "ابتدا همین ویدئو باید تأیید نهایی شود."
+            return self.video_reply(exported.json(), actor, exported=True)
+        if text.startswith(
+            ("/assets ", "/voiceupload ", "/screenupload ", "/confirmvoice ", "/confirmscreen ")
+        ):
+            command, _, script_id = text.partition(" ")
+            if not script_id.isdigit():
+                return "شناسه سناریو لازم است."
+            response = self.studio.get(f"/scripts/{script_id}", headers=actor)
+            if response.status_code != 200 or response.json()["state"] != "approved":
+                return "ابتدا همین نسخهٔ سناریو را تأیید کن؛ فایل دریافت نمی‌شود."
+            data = response.json()
+            if command == "/assets":
+                return BotReply(
+                    "نوع فایل را انتخاب کن. اصل فایل خصوصی و محفوظ می‌ماند.",
+                    {
+                        "inline_keyboard": [
+                            [
+                                {
+                                    "text": "صدای ضبط‌شدهٔ خودم",
+                                    "callback_data": f"voiceupload:{script_id}",
+                                },
+                                {"text": "ضبط صفحه", "callback_data": f"screenupload:{script_id}"},
+                            ],
+                            [{"text": "ساخت پیش‌نمایش", "callback_data": f"preview:{script_id}"}],
+                        ]
+                    },
+                )
+            kind = "voice" if command in {"/voiceupload", "/confirmvoice"} else "screen"
+            if command in {"/voiceupload", "/screenupload"}:
+                return BotReply(
+                    "فقط صدای واقعیِ ضبط‌شدهٔ خودت را بفرست؛ شبیه‌سازی صدا پذیرفته نیست."
+                    if kind == "voice"
+                    else "فقط ضبط صفحه‌ای را بفرست که متعلق به توست یا اجازهٔ استفاده‌اش را داری.",
+                    {
+                        "inline_keyboard": [
+                            [
+                                {
+                                    "text": "تأیید می‌کنم؛ آمادهٔ ارسال فایل",
+                                    "callback_data": f"{'confirmvoice' if kind == 'voice' else 'confirmscreen'}:{script_id}",
+                                }
+                            ]
+                        ]
+                    },
+                )
+            selected = self.studio.put(
+                "/conversation",
+                json={
+                    "item_id": data["item_id"],
+                    "upload_script_id": int(script_id),
+                    "upload_kind": kind,
+                },
+                headers=actor,
+            )
+            if selected.status_code != 200:
+                return "نسخهٔ جاری برای بارگذاری تأیید نیست؛ ابتدا سناریو را بررسی کن."
+            return (
+                "اکنون صدای خودت را به‌صورت ویس یا MP3/WAV/M4A/OGG، حداکثر ۲۰ مگابایت بفرست. پیش‌نمایش پردازش‌شده برمی‌گردد."
+                if kind == "voice"
+                else "اکنون ضبط صفحه را به‌صورت MP4 یا WebM، حداکثر ۲۰ مگابایت بفرست."
             )
         if text.startswith("/script "):
             item_id = text.removeprefix("/script ").strip()
@@ -187,7 +363,14 @@ class TelegramGateway:
             )
             if result.status_code != 200:
                 return "این نسخه دیگر در انتظار تأیید نیست؛ نسخهٔ تازه را بررسی کن."
-            return "همین نسخهٔ سناریو تأیید شد. هیچ انتشار یا تولید صدایی انجام نشده است؛ مرحلهٔ دریافت و پردازش رسانه هنوز فعال نشده است."
+            return BotReply(
+                "همین نسخهٔ سناریو تأیید شد. حالا می‌توانی صدای واقعی خودت و ضبط صفحه را بارگذاری کنی. هیچ انتشار خودکاری انجام نمی‌شود.",
+                {
+                    "inline_keyboard": [
+                        [{"text": "بارگذاری رسانه", "callback_data": f"assets:{data['id']}"}]
+                    ]
+                },
+            )
         if text.startswith("https://"):
             response = self.studio.post("/items", json={"url": text}, headers=actor)
             if response.status_code != 200:
@@ -297,6 +480,11 @@ class TelegramGateway:
                         "SCRIPT_DRAFT",
                         "SCRIPT_APPROVED",
                         "REVISION_REQUESTED",
+                        "AWAITING_ASSETS",
+                        "EDITING",
+                        "PREVIEW_READY",
+                        "FINAL_APPROVED",
+                        "EXPORTED",
                     }
                 ):
                     return BotReply(

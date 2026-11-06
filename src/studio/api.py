@@ -16,14 +16,33 @@ from sqlalchemy.orm.exc import StaleDataError
 from .domain import TRANSITIONS, normalize_url, rank, report_day, text_similarity
 from .feeds import FeedReader, feed_url
 from .integrations import LlamaResearch, OllamaResearch, YouTubeMetadata
+from .media_api import register_media
 from .producer import LocalScriptProvider
 from .producer_api import register_producer
+from .render_api import register_render
 from .research import Research, UnconfiguredProvider
-from .storage import Audit, Conversation, Delivery, Item, Report, ScriptDraft, Source, database
+from .storage import (
+    Audit,
+    Conversation,
+    Delivery,
+    Item,
+    MediaAsset,
+    RenderJob,
+    Report,
+    ScriptDraft,
+    Source,
+    database,
+)
 
 
 def create_app(
-    database_url=None, token=None, provider=None, metadata=None, feeds=None, script_provider=None
+    database_url=None,
+    token=None,
+    provider=None,
+    metadata=None,
+    feeds=None,
+    script_provider=None,
+    media_root=None,
 ):
     engine, sessions = database(database_url or os.getenv("DATABASE_URL", "sqlite:///./studio.db"))
     secret = token or os.getenv("STUDIO_ADMIN_TOKEN")
@@ -92,6 +111,9 @@ def create_app(
             session.execute(select(Item.version).limit(1)).all()
             session.execute(select(Source.id).limit(1)).all()
             session.execute(select(Delivery.id).limit(1)).all()
+            session.execute(select(Conversation.upload_kind).limit(1)).all()
+            session.execute(select(MediaAsset.id).limit(1)).all()
+            session.execute(select(RenderJob.id).limit(1)).all()
         return {"status": "ok", "publication_enabled": False}
 
     @app.get("/sources", dependencies=[Depends(authorized)])
@@ -182,6 +204,8 @@ def create_app(
                 "item_id": current.item_id,
                 "evidence_kind": current.evidence_kind,
                 "pending_script_id": current.pending_script_id,
+                "upload_script_id": current.upload_script_id,
+                "upload_kind": current.upload_kind,
             }
 
     @app.delete("/conversation")
@@ -202,7 +226,32 @@ def create_app(
                 draft = session.get(ScriptDraft, body.pending_script_id)
                 if not draft or draft.item_id != item.id:
                     raise HTTPException(409, "Script does not belong to this idea")
+            if body.upload_script_id is not None:
+                upload_script = session.get(ScriptDraft, body.upload_script_id)
+                latest = session.scalar(
+                    select(ScriptDraft.id)
+                    .where(ScriptDraft.item_id == item.id)
+                    .order_by(ScriptDraft.revision.desc())
+                    .limit(1)
+                )
+                if (
+                    not upload_script
+                    or upload_script.item_id != item.id
+                    or upload_script.state != "approved"
+                    or latest != upload_script.id
+                    or item.status
+                    not in {"SCRIPT_APPROVED", "AWAITING_ASSETS", "PREVIEW_READY", "FINAL_APPROVED"}
+                ):
+                    raise HTTPException(409, "Approve the current script before upload")
+                if body.upload_kind not in {"voice", "screen"}:
+                    raise HTTPException(422, "Choose voice or screen upload")
+            elif body.upload_kind is not None:
+                raise HTTPException(422, "Upload script is required")
             if current:
+                current.upload_script_id, current.upload_kind = (
+                    body.upload_script_id,
+                    body.upload_kind,
+                )
                 current.pending_script_id = body.pending_script_id
                 current.item_id, current.evidence_kind = item.id, body.evidence_kind
             else:
@@ -212,6 +261,8 @@ def create_app(
                         item_id=item.id,
                         evidence_kind=body.evidence_kind,
                         pending_script_id=body.pending_script_id,
+                        upload_script_id=body.upload_script_id,
+                        upload_kind=body.upload_kind,
                     )
                 )
             session.commit()
@@ -486,6 +537,12 @@ def create_app(
         authorized,
         script_provider or (LocalScriptProvider() if os.getenv("STUDIO_LOCAL_AI") == "1" else None),
     )
+    register_media(
+        app, sessions, authorized, media_root or os.getenv("STUDIO_MEDIA_ROOT", ".local/media")
+    )
+    register_render(
+        app, sessions, authorized, media_root or os.getenv("STUDIO_MEDIA_ROOT", ".local/media")
+    )
     return app
 
 
@@ -517,6 +574,8 @@ class EvidenceInput(BaseModel):
 
 
 class ConversationInput(BaseModel):
+    upload_script_id: int | None = Field(default=None, gt=0)
+    upload_kind: Literal["voice", "screen"] | None = None
     pending_script_id: int | None = Field(default=None, gt=0)
     item_id: int = Field(gt=0)
     evidence_kind: Literal["description", "transcript", "user_text"] = "description"
