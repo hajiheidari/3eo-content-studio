@@ -54,7 +54,10 @@ private bot user; this is a single-founder pilot, not multi-tenant scheduling.
 Activation needs a project with YouTube Data API v3 enabled, a restricted API key stored securely
 as `STUDIO_YOUTUBE_API_KEY`, and HTTPS policy access to `www.googleapis.com`. Never paste the key
 in chat, logs or Git. It is passed as an API header, not in a logged query string. Use normal free
-quota, without paid API/billing activation. Platform quota limits still apply. No such key is
+quota, without paid API/billing activation. Platform quota limits still apply. An optional secure key binding, its `www.googleapis.com` destination and refreshed startup
+instructions are saved in the environment draft for user review, not applied. To activate, enter
+the key in environment settings, save and publish; then restart/recheck development services
+after restoration. Publishing does not keep the current bot process alive. No such key is
 currently configured; an actual public YouTube oEmbed request still fails with proxy 403. No
 scraping, proxy bypass, unofficial transcript download or invented video analysis is used.
 

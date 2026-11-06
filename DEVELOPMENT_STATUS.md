@@ -122,3 +122,8 @@ limits and acceptance evidence. No paid calls, publication, production or Espadn
 
 Final verification: 133 tests pass, Ruff and Alembic schema checks pass. The actual silent visual
 draft and its narration text were delivered to the approved private Telegram user.
+
+Reusable environment draft saved: optional STUDIO_YOUTUBE_API_KEY binding restricted to
+www.googleapis.com, existing domains preserved, refreshed dependency checks and startup
+instructions. Save confirmed; not published/applied and no API key supplied. Current services
+remain development-only. Publishing/restoration requires restarting and rechecking the bot.
